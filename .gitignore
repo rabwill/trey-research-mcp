@@ -1,0 +1,7 @@
+node_modules/
+dist/
+assets/
+.azurite/
+*.js.map
+*.d.ts
+.env

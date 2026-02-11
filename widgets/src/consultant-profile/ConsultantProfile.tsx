@@ -1,0 +1,308 @@
+import React from "react";
+import {
+  Card,
+  Text,
+  Badge,
+  Button,
+  Table,
+  TableHeader,
+  TableRow,
+  TableHeaderCell,
+  TableBody,
+  TableCell,
+  TableCellLayout,
+  tokens,
+  makeStyles,
+  Divider,
+  Subtitle1,
+  Subtitle2,
+  Body1,
+  Caption1,
+  Title3,
+  Avatar,
+} from "@fluentui/react-components";
+import {
+  Mail20Regular,
+  Phone20Regular,
+  Location20Regular,
+  Certificate20Regular,
+  Briefcase20Regular,
+  ArrowLeft16Regular,
+} from "@fluentui/react-icons";
+import { useOpenAiGlobal } from "../hooks/useOpenAiGlobal";
+import type { ConsultantProfileData, Assignment } from "../types";
+
+const useStyles = makeStyles({
+  root: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+    padding: "16px",
+    fontFamily: tokens.fontFamilyBase,
+    maxWidth: "800px",
+  },
+  profileHeader: {
+    display: "flex",
+    gap: "20px",
+    alignItems: "flex-start",
+  },
+  photo: {
+    width: "80px",
+    height: "80px",
+    borderRadius: "50%",
+    objectFit: "cover" as const,
+    border: `3px solid ${tokens.colorBrandBackground}`,
+    flexShrink: 0,
+  },
+  headerInfo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    flex: 1,
+  },
+  contactRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    color: tokens.colorNeutralForeground2,
+  },
+  section: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  tagRow: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    gap: "6px",
+  },
+  statsRow: {
+    display: "flex",
+    gap: "16px",
+    flexWrap: "wrap" as const,
+  },
+  statCard: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    padding: "12px 20px",
+    minWidth: "100px",
+  },
+  noData: {
+    padding: "24px",
+    textAlign: "center" as const,
+    color: tokens.colorNeutralForeground3,
+  },
+});
+
+export function ConsultantProfile() {
+  const styles = useStyles();
+  const toolOutput = useOpenAiGlobal<ConsultantProfileData>("toolOutput");
+  const data = toolOutput;
+
+  if (!data?.consultant) {
+    return (
+      <div className={styles.noData}>
+        <Body1>No profile loaded. Use the MCP tool to view a consultant profile.</Body1>
+      </div>
+    );
+  }
+
+  const { consultant, assignments = [] } = data;
+
+  // Calculate stats from assignments
+  const totalBillableHours = assignments
+    .filter((a) => a.billable)
+    .reduce((sum, a) => {
+      const forecast = a.forecast ?? [];
+      return sum + forecast.reduce((s, f) => s + f.hours, 0);
+    }, 0);
+
+  const totalDelivered = assignments.reduce((sum, a) => {
+    const delivered = a.delivered ?? [];
+    return sum + delivered.reduce((s, d) => s + d.hours, 0);
+  }, 0);
+
+  const activeProjects = assignments.length;
+
+  return (
+    <div className={styles.root}>
+      {/* ── Profile Header ── */}
+      <Card>
+        <div className={styles.profileHeader}>
+          <img
+            src={consultant.photoUrl}
+            alt={consultant.name}
+            className={styles.photo}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+          <div className={styles.headerInfo}>
+            <Title3>{consultant.name}</Title3>
+
+            <div className={styles.contactRow}>
+              <Mail20Regular />
+              <Body1>{consultant.email}</Body1>
+            </div>
+
+            <div className={styles.contactRow}>
+              <Phone20Regular />
+              <Body1>{consultant.phone}</Body1>
+            </div>
+
+            {consultant.location && (
+              <div className={styles.contactRow}>
+                <Location20Regular />
+                <Body1>
+                  {consultant.location.city}, {consultant.location.state},{" "}
+                  {consultant.location.country}
+                </Body1>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* ── Quick Stats ── */}
+      <div className={styles.statsRow}>
+        <Card className={styles.statCard}>
+          <Caption1>Active Projects</Caption1>
+          <Title3>{activeProjects}</Title3>
+        </Card>
+        <Card className={styles.statCard}>
+          <Caption1>Forecast Hours</Caption1>
+          <Title3>{totalBillableHours}</Title3>
+        </Card>
+        <Card className={styles.statCard}>
+          <Caption1>Delivered Hours</Caption1>
+          <Title3>{totalDelivered}</Title3>
+        </Card>
+      </div>
+
+      <Divider />
+
+      {/* ── Skills ── */}
+      {consultant.skills?.length > 0 && (
+        <div className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <Subtitle2>Skills</Subtitle2>
+          </div>
+          <div className={styles.tagRow}>
+            {consultant.skills.map((skill) => (
+              <Badge key={skill} appearance="outline" size="medium" color="informative">
+                {skill}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Certifications ── */}
+      {consultant.certifications?.length > 0 && (
+        <div className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <Certificate20Regular />
+            <Subtitle2>Certifications</Subtitle2>
+          </div>
+          <div className={styles.tagRow}>
+            {consultant.certifications.map((cert) => (
+              <Badge key={cert} appearance="filled" size="medium" color="success">
+                {cert}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Roles ── */}
+      {consultant.roles?.length > 0 && (
+        <div className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <Briefcase20Regular />
+            <Subtitle2>Roles</Subtitle2>
+          </div>
+          <div className={styles.tagRow}>
+            {consultant.roles.map((role) => (
+              <Badge key={role} appearance="filled" size="medium" color="brand">
+                {role}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Divider />
+
+      {/* ── Assignments ── */}
+      <div className={styles.section}>
+        <Subtitle1>Assignments</Subtitle1>
+        {assignments.length > 0 ? (
+          <Table size="small">
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Project</TableHeaderCell>
+                <TableHeaderCell>Role</TableHeaderCell>
+                <TableHeaderCell>Billable</TableHeaderCell>
+                <TableHeaderCell>Rate</TableHeaderCell>
+                <TableHeaderCell>Forecast Hrs</TableHeaderCell>
+                <TableHeaderCell>Delivered Hrs</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {assignments.map((asn, idx) => {
+                const forecastHrs = (asn.forecast ?? []).reduce(
+                  (s, f) => s + f.hours,
+                  0
+                );
+                const deliveredHrs = (asn.delivered ?? []).reduce(
+                  (s, d) => s + d.hours,
+                  0
+                );
+                return (
+                  <TableRow key={idx}>
+                    <TableCell>
+                      <TableCellLayout>
+                        <Body1>{asn.projectName ?? `Project ${asn.projectId}`}</Body1>
+                      </TableCellLayout>
+                    </TableCell>
+                    <TableCell>
+                      <Badge appearance="outline" size="small">
+                        {asn.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        appearance="filled"
+                        size="small"
+                        color={asn.billable ? "success" : "warning"}
+                      >
+                        {asn.billable ? "Yes" : "No"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Body1>${asn.rate}/hr</Body1>
+                    </TableCell>
+                    <TableCell>
+                      <Body1>{forecastHrs}</Body1>
+                    </TableCell>
+                    <TableCell>
+                      <Body1>{deliveredHrs}</Body1>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        ) : (
+          <Caption1>No assignments found for this consultant.</Caption1>
+        )}
+      </div>
+    </div>
+  );
+}
