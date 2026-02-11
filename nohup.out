@@ -1,0 +1,15 @@
+
+> trey-hr-consultant-mcp@1.0.0 start:server
+> cd server && npm start
+
+
+> trey-hr-mcp-server@1.0.0 start
+> tsx src/index.ts
+
+Azurite tables ready.
+
+  HR Consultant MCP Server
+  Transport: Streamable HTTP (stateless)
+  Endpoint:  http://localhost:8000/mcp
+  Health:    http://localhost:8000/health
+
