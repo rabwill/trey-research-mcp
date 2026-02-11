@@ -1,38 +1,22 @@
 import React, { useState } from "react";
 import {
-  Card,
-  Text,
-  Badge,
-  Button,
   Table,
   TableHeader,
   TableRow,
   TableHeaderCell,
   TableBody,
   TableCell,
-  TableCellLayout,
-  tokens,
   makeStyles,
-  mergeClasses,
   Divider,
-  Subtitle1,
-  Subtitle2,
   Body1,
-  Body2,
   Caption1,
-  Title3,
-  Title2,
 } from "@fluentui/react-components";
 import {
-  People20Regular,
   People24Regular,
   Briefcase20Regular,
   Briefcase24Regular,
-  Clock20Regular,
   Clock24Regular,
-  ArrowRight16Regular,
   ArrowLeft16Regular,
-  ArrowLeft20Regular,
   Mail20Regular,
   Phone20Regular,
   Location20Regular,
@@ -43,700 +27,183 @@ import {
   MoneyHand20Regular,
 } from "@fluentui/react-icons";
 import { useOpenAiGlobal } from "../hooks/useOpenAiGlobal";
+import { useThemeColors, type ThemeColors } from "../hooks/useThemeColors";
 import type { DashboardData, Consultant, Project, Assignment } from "../types";
 
-/* ── Colour palette (LinkedIn-inspired cool blues + enterprise neutral) ── */
-const BRAND = "#0a66c2";
-const BRAND_LIGHT = "#e8f1fb";
-const BRAND_DARK = "#004182";
-const SURFACE = "#f3f6f8";
-const CARD_BG = "#ffffff";
-const TEXT_PRIMARY = "#191919";
-const TEXT_SECONDARY = "#666666";
-const TEXT_TERTIARY = "#999999";
-const DIVIDER = "#e8e8e8";
-const GREEN = "#057642";
-const GREEN_BG = "#e6f4ea";
-const AMBER = "#b24020";
-const AMBER_BG = "#fff3e0";
+/* ── Helpers ── */
 const AVATAR_COLORS = ["#0a66c2", "#7c3aed", "#0e7490", "#b45309", "#059669", "#dc2626", "#6d28d9", "#0284c7"];
 
-/** Get initials from a name (max 2 chars) */
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return (name[0] ?? "?").toUpperCase();
 }
-/** Deterministic colour based on name */
 function avatarColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   LinkedIn-style avatar component with real photo + initials fallback
-   ══════════════════════════════════════════════════════════════════════════ */
-function Avatar({
-  src,
-  name,
-  size = 40,
-  ring = false,
-}: {
-  src?: string;
-  name: string;
-  size?: number;
-  ring?: boolean;
-}) {
+/* ── Avatar ── */
+function Avatar({ src, name, size = 40, ring = false, ringColor }: { src?: string; name: string; size?: number; ring?: boolean; ringColor?: string }) {
   const [imgFailed, setImgFailed] = useState(false);
   const bg = avatarColor(name);
-  const initials = getInitials(name);
-  const borderW = ring ? 3 : 0;
-  const outer = size + borderW * 2;
-
-  const wrapperStyle: React.CSSProperties = {
-    width: outer,
-    height: outer,
-    borderRadius: "50%",
-    border: ring ? `${borderW}px solid ${BRAND}` : "none",
-    flexShrink: 0,
-    overflow: "hidden",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: CARD_BG,
-  };
-  const innerStyle: React.CSSProperties = {
-    width: size,
-    height: size,
-    borderRadius: "50%",
-    overflow: "hidden",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  };
-
+  const bw = ring ? 3 : 0;
+  const outer = size + bw * 2;
+  const wrap: React.CSSProperties = { width: outer, height: outer, borderRadius: "50%", border: ring ? `${bw}px solid ${ringColor ?? bg}` : "none", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" };
+  const inner: React.CSSProperties = { width: size, height: size, borderRadius: "50%", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" };
   if (src && !imgFailed) {
-    return (
-      <span style={wrapperStyle}>
-        <span style={innerStyle}>
-          <img
-            src={src}
-            alt={name}
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-            onError={() => setImgFailed(true)}
-          />
-        </span>
-      </span>
-    );
+    return <span style={wrap}><span style={inner}><img src={src} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={() => setImgFailed(true)} /></span></span>;
   }
-
-  return (
-    <span style={wrapperStyle}>
-      <span
-        style={{
-          ...innerStyle,
-          background: bg,
-          color: "#fff",
-          fontSize: size * 0.4,
-          fontWeight: 700,
-          letterSpacing: "0.5px",
-          userSelect: "none",
-        }}
-      >
-        {initials}
-      </span>
-    </span>
-  );
+  return <span style={wrap}><span style={{ ...inner, background: bg, color: "#fff", fontSize: size * 0.4, fontWeight: 700, letterSpacing: "0.5px", userSelect: "none" }}>{getInitials(name)}</span></span>;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   Styles
-   ══════════════════════════════════════════════════════════════════════════ */
+/* ── Structural styles (no colours) ── */
 const useStyles = makeStyles({
-  /* ── Layout ── */
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "20px",
-    padding: "24px",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    boxSizing: "border-box",
-    width: "100%",
-    overflowX: "hidden" as const,
-    background: SURFACE,
-    color: TEXT_PRIMARY,
-    minHeight: "100%",
-  },
-  rootWhite: {
-    background: CARD_BG,
-  },
-
-  /* ── Header ── */
-  headerBar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap" as const,
-    gap: "8px",
-  },
-  headerTitle: {
-    fontSize: "22px",
-    fontWeight: 700,
-    color: TEXT_PRIMARY,
-    letterSpacing: "-0.3px",
-  },
-  headerSubtitle: {
-    fontSize: "13px",
-    color: TEXT_SECONDARY,
-    fontWeight: 400,
-  },
-  breadcrumb: {
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-    fontSize: "13px",
-    color: TEXT_SECONDARY,
-  },
-  breadcrumbLink: {
-    color: BRAND,
-    cursor: "pointer",
-    fontWeight: 500,
-    textDecoration: "none",
-    ":hover": { textDecoration: "underline" },
-  },
-
-  /* ── KPI Cards ── */
-  kpiGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
-    gap: "16px",
-  },
-  kpiCard: {
-    background: CARD_BG,
-    borderRadius: "12px",
-    padding: "20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
-    border: `1px solid ${DIVIDER}`,
-    transitionProperty: "box-shadow, transform",
-    transitionDuration: "0.15s",
-    transitionTimingFunction: "ease",
-    ":hover": {
-      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-      transform: "translateY(-1px)",
-    },
-  },
-  kpiIconBox: {
-    width: "40px",
-    height: "40px",
-    borderRadius: "10px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  kpiValue: {
-    fontSize: "30px",
-    fontWeight: 700,
-    lineHeight: "1.1",
-    color: TEXT_PRIMARY,
-    letterSpacing: "-0.5px",
-  },
-  kpiLabel: {
-    fontSize: "12px",
-    fontWeight: 500,
-    color: TEXT_SECONDARY,
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
-  },
-
-  /* ── Section header ── */
-  sectionHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "0",
-  },
-  sectionTitle: {
-    fontSize: "16px",
-    fontWeight: 600,
-    color: TEXT_PRIMARY,
-  },
-  sectionCount: {
-    fontSize: "12px",
-    fontWeight: 500,
-    color: TEXT_TERTIARY,
-    background: SURFACE,
-    padding: "2px 10px",
-    borderRadius: "12px",
-  },
-
-  /* ── Card-based consultant rows ── */
-  consultantCards: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-  },
-  consultantCard: {
-    display: "flex",
-    alignItems: "center",
-    gap: "16px",
-    background: CARD_BG,
-    borderRadius: "12px",
-    padding: "16px 20px",
-    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-    border: `1px solid ${DIVIDER}`,
-    cursor: "pointer",
-    transitionProperty: "box-shadow, border-color",
-    transitionDuration: "0.15s",
-    transitionTimingFunction: "ease",
-    ":hover": {
-      boxShadow: "0 3px 10px rgba(0,0,0,0.07)",
-      borderTopColor: BRAND,
-      borderRightColor: BRAND,
-      borderBottomColor: BRAND,
-      borderLeftColor: BRAND,
-    },
-  },
-  consultantInfo: {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: "2px",
-  },
-  consultantName: {
-    fontSize: "15px",
-    fontWeight: 600,
-    color: TEXT_PRIMARY,
-    whiteSpace: "nowrap" as const,
-    overflow: "hidden" as const,
-    textOverflow: "ellipsis" as const,
-  },
-  consultantMeta: {
-    fontSize: "13px",
-    color: TEXT_SECONDARY,
-  },
-  consultantBadges: {
-    display: "flex",
-    flexWrap: "wrap" as const,
-    gap: "4px",
-    marginTop: "4px",
-  },
-  consultantChevron: {
-    color: TEXT_TERTIARY,
-    flexShrink: 0,
-  },
-
-  /* ── Project cards ── */
-  projectCards: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-  },
-  projectCard: {
-    display: "flex",
-    alignItems: "center",
-    gap: "16px",
-    background: CARD_BG,
-    borderRadius: "12px",
-    padding: "16px 20px",
-    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-    border: `1px solid ${DIVIDER}`,
-    cursor: "pointer",
-    transitionProperty: "box-shadow, border-color",
-    transitionDuration: "0.15s",
-    transitionTimingFunction: "ease",
-    ":hover": {
-      boxShadow: "0 3px 10px rgba(0,0,0,0.07)",
-      borderTopColor: BRAND,
-      borderRightColor: BRAND,
-      borderBottomColor: BRAND,
-      borderLeftColor: BRAND,
-    },
-  },
-  projectIconBox: {
-    width: "44px",
-    height: "44px",
-    borderRadius: "10px",
-    background: BRAND_LIGHT,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    color: BRAND,
-  },
-  projectInfo: {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: "2px",
-  },
-  projectName: {
-    fontSize: "15px",
-    fontWeight: 600,
-    color: TEXT_PRIMARY,
-  },
-  projectMeta: {
-    fontSize: "13px",
-    color: TEXT_SECONDARY,
-  },
-
-  /* ── Table (used in detail views) ── */
-  tableWrapper: {
-    overflowX: "auto" as const,
-    width: "100%",
-    WebkitOverflowScrolling: "touch" as const,
-    borderRadius: "8px",
-    border: `1px solid ${DIVIDER}`,
-    background: CARD_BG,
-  },
-  table: {
-    minWidth: "560px",
-    width: "100%",
-  },
-  tableHeader: {
-    background: SURFACE,
-  },
-
-  /* ── Profile detail view ── */
-  profileBanner: {
-    background: `linear-gradient(135deg, ${BRAND} 0%, ${BRAND_DARK} 100%)`,
-    borderRadius: "12px",
-    padding: "32px 24px 24px",
-    display: "flex",
-    gap: "20px",
-    alignItems: "center",
-    flexWrap: "wrap" as const,
-    color: "#ffffff",
-  },
-  profileInfo: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    flex: 1,
-    minWidth: 0,
-  },
-  profileName: {
-    fontSize: "24px",
-    fontWeight: 700,
-    color: "#ffffff",
-    letterSpacing: "-0.3px",
-  },
-  profileContact: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    fontSize: "13px",
-    color: "rgba(255,255,255,0.85)",
-  },
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-    gap: "12px",
-  },
-  statCard: {
-    background: CARD_BG,
-    borderRadius: "12px",
-    padding: "20px",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "4px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-    border: `1px solid ${DIVIDER}`,
-  },
-  statValue: {
-    fontSize: "28px",
-    fontWeight: 700,
-    color: TEXT_PRIMARY,
-    letterSpacing: "-0.5px",
-  },
-  statLabel: {
-    fontSize: "12px",
-    fontWeight: 500,
-    color: TEXT_SECONDARY,
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.3px",
-  },
-
-  /* ── Tags / badges section ── */
-  section: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-    background: CARD_BG,
-    borderRadius: "12px",
-    padding: "20px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-    border: `1px solid ${DIVIDER}`,
-  },
-  sectionLabel: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    fontSize: "14px",
-    fontWeight: 600,
-    color: TEXT_PRIMARY,
-  },
-  tagRow: {
-    display: "flex",
-    flexWrap: "wrap" as const,
-    gap: "8px",
-  },
-  skillTag: {
-    padding: "4px 12px",
-    borderRadius: "16px",
-    fontSize: "12px",
-    fontWeight: 500,
-    background: BRAND_LIGHT,
-    color: BRAND_DARK,
-    border: `1px solid rgba(10,102,194,0.15)`,
-  },
-  certTag: {
-    padding: "4px 12px",
-    borderRadius: "16px",
-    fontSize: "12px",
-    fontWeight: 500,
-    background: GREEN_BG,
-    color: GREEN,
-    border: `1px solid rgba(5,118,66,0.15)`,
-  },
-  roleTag: {
-    padding: "4px 12px",
-    borderRadius: "16px",
-    fontSize: "12px",
-    fontWeight: 500,
-    background: "#f3e8ff",
-    color: "#6d28d9",
-    border: `1px solid rgba(109,40,217,0.15)`,
-  },
-
-  /* ── Project detail header ── */
-  projectBanner: {
-    background: CARD_BG,
-    borderRadius: "12px",
-    padding: "24px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-    border: `1px solid ${DIVIDER}`,
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-  },
-  projectDetailTitle: {
-    fontSize: "22px",
-    fontWeight: 700,
-    color: TEXT_PRIMARY,
-    letterSpacing: "-0.3px",
-  },
-  clientRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    fontSize: "13px",
-    color: TEXT_SECONDARY,
-  },
-
-  /* ── No data ── */
-  noData: {
-    padding: "48px 24px",
-    textAlign: "center" as const,
-    color: TEXT_TERTIARY,
-    background: CARD_BG,
-    borderRadius: "12px",
-    border: `1px solid ${DIVIDER}`,
-  },
+  root: { display: "flex", flexDirection: "column", gap: "20px", padding: "24px", fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', boxSizing: "border-box", width: "100%", overflowX: "hidden" as const, minHeight: "100%" },
+  headerBar: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" as const, gap: "8px" },
+  kpiGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: "16px" },
+  sectionHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0" },
+  cards: { display: "flex", flexDirection: "column", gap: "8px" },
+  tableWrapper: { overflowX: "auto" as const, width: "100%", WebkitOverflowScrolling: "touch" as const, borderRadius: "8px" },
+  table: { minWidth: "560px", width: "100%" },
+  statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px" },
+  tagRow: { display: "flex", flexWrap: "wrap" as const, gap: "8px" },
+  breadcrumb: { display: "flex", alignItems: "center", gap: "4px", fontSize: "13px" },
+  profileBanner: { borderRadius: "12px", padding: "32px 24px 24px", display: "flex", gap: "20px", alignItems: "center", flexWrap: "wrap" as const },
+  profileInfo: { display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: 0 },
+  profileContact: { display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" },
 });
 
-type ViewState =
-  | { view: "dashboard" }
-  | { view: "consultant"; id: string }
-  | { view: "project"; id: string };
+/* ── Pill helper ── */
+function Pill({ children, bg, color, border }: { children: React.ReactNode; bg: string; color: string; border?: string }) {
+  return <span style={{ padding: "4px 12px", borderRadius: "16px", fontSize: "12px", fontWeight: 500, background: bg, color, border: border ?? "none", whiteSpace: "nowrap" }}>{children}</span>;
+}
 
-const fallback: DashboardData = {
-  consultants: [],
-  projects: [],
-  assignments: [],
-  summary: {
-    totalConsultants: 0,
-    totalProjects: 0,
-    totalAssignments: 0,
-    totalBillableHours: 0,
-  },
-};
+/* ── Billable pill ── */
+function BillablePill({ billable, t }: { billable: boolean; t: ThemeColors }) {
+  return <Pill bg={billable ? t.greenBg : t.amberBg} color={billable ? t.green : t.amber}>{billable ? "Billable" : "Non-billable"}</Pill>;
+}
+
+type ViewState = { view: "dashboard" } | { view: "consultant"; id: string } | { view: "project"; id: string };
+
+const fallback: DashboardData = { consultants: [], projects: [], assignments: [], summary: { totalConsultants: 0, totalProjects: 0, totalAssignments: 0, totalBillableHours: 0 } };
 
 export function Dashboard() {
-  const styles = useStyles();
+  const s = useStyles();
+  const t = useThemeColors();
   const toolOutput = useOpenAiGlobal<DashboardData>("toolOutput");
   const data = toolOutput ?? fallback;
   const [viewState, setViewState] = useState<ViewState>({ view: "dashboard" });
-
   const allAssignments = data.assignments ?? [];
 
+  /* Shared inline-style factories */
+  const cardStyle: React.CSSProperties = { background: t.cardBg, borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: `1px solid ${t.divider}` };
+  const hoverCard = (e: React.MouseEvent, enter: boolean) => {
+    const el = e.currentTarget as HTMLElement;
+    el.style.boxShadow = enter ? "0 3px 10px rgba(0,0,0,0.07)" : "0 1px 2px rgba(0,0,0,0.04)";
+    el.style.borderColor = enter ? t.brand : t.divider;
+  };
+
   /* ═══════════════════════════════════════════════════════════════════════
-     CONSULTANT PROFILE VIEW
+     CONSULTANT PROFILE
      ═══════════════════════════════════════════════════════════════════════ */
   if (viewState.view === "consultant") {
     const consultant = data.consultants.find((c) => c.id === viewState.id);
     if (!consultant) {
       return (
-        <div className={styles.root}>
-          <div className={styles.breadcrumb}>
-            <span className={styles.breadcrumbLink} onClick={() => setViewState({ view: "dashboard" })}>Dashboard</span>
-            <ChevronRight16Regular />
-            <span>Not found</span>
+        <div className={s.root} style={{ background: t.surface, color: t.textPrimary }}>
+          <div className={s.breadcrumb} style={{ color: t.textSecondary }}>
+            <span style={{ color: t.brand, cursor: "pointer", fontWeight: 500 }} onClick={() => setViewState({ view: "dashboard" })}>Dashboard</span>
+            <ChevronRight16Regular /><span>Not found</span>
           </div>
           <Body1>Consultant not found.</Body1>
         </div>
       );
     }
-    const myAssignments = allAssignments.filter((a) => a.consultantId === consultant.id);
-    const forecastHrs = myAssignments
-      .filter((a) => a.billable)
-      .reduce((sum, a) => sum + (a.forecast ?? []).reduce((s, f) => s + f.hours, 0), 0);
-    const deliveredHrs = myAssignments.reduce(
-      (sum, a) => sum + (a.delivered ?? []).reduce((s, d) => s + d.hours, 0),
-      0
-    );
+    const myAsn = allAssignments.filter((a) => a.consultantId === consultant.id);
+    const forecastHrs = myAsn.filter((a) => a.billable).reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
+    const deliveredHrs = myAsn.reduce((sum, a) => sum + (a.delivered ?? []).reduce((x, d) => x + d.hours, 0), 0);
 
     return (
-      <div className={styles.root}>
+      <div className={s.root} style={{ background: t.surface, color: t.textPrimary }}>
         {/* Breadcrumb */}
-        <div className={styles.breadcrumb}>
-          <span className={styles.breadcrumbLink} onClick={() => setViewState({ view: "dashboard" })}>
-            <ArrowLeft16Regular style={{ verticalAlign: "middle", marginRight: 2 }} />
-            Dashboard
+        <div className={s.breadcrumb} style={{ color: t.textSecondary }}>
+          <span style={{ color: t.brand, cursor: "pointer", fontWeight: 500 }} onClick={() => setViewState({ view: "dashboard" })}>
+            <ArrowLeft16Regular style={{ verticalAlign: "middle", marginRight: 2 }} />Dashboard
           </span>
           <ChevronRight16Regular />
-          <span style={{ color: TEXT_PRIMARY, fontWeight: 500 }}>{consultant.name}</span>
+          <span style={{ color: t.textPrimary, fontWeight: 500 }}>{consultant.name}</span>
         </div>
 
-        {/* Profile banner */}
-        <div className={styles.profileBanner}>
-          <Avatar src={consultant.photoUrl} name={consultant.name} size={80} ring />
-          <div className={styles.profileInfo}>
-            <div className={styles.profileName}>{consultant.name}</div>
+        {/* Banner */}
+        <div className={s.profileBanner} style={{ background: t.bannerGradient, color: t.bannerText }}>
+          <Avatar src={consultant.photoUrl} name={consultant.name} size={80} ring ringColor={t.bannerText} />
+          <div className={s.profileInfo}>
+            <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.3px", color: t.bannerText }}>{consultant.name}</div>
             {consultant.roles?.length > 0 && (
-              <div style={{ fontSize: "14px", color: "rgba(255,255,255,0.9)", fontWeight: 500 }}>
-                {consultant.roles.join(" · ")}
-              </div>
+              <div style={{ fontSize: 14, color: `${t.bannerText}e6`, fontWeight: 500 }}>{consultant.roles.join(" · ")}</div>
             )}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "4px" }}>
-              <span className={styles.profileContact}><Mail20Regular style={{ fontSize: 16 }} />{consultant.email}</span>
-              <span className={styles.profileContact}><Phone20Regular style={{ fontSize: 16 }} />{consultant.phone}</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 4 }}>
+              <span className={s.profileContact} style={{ color: `${t.bannerText}d9` }}><Mail20Regular style={{ fontSize: 16 }} />{consultant.email}</span>
+              <span className={s.profileContact} style={{ color: `${t.bannerText}d9` }}><Phone20Regular style={{ fontSize: 16 }} />{consultant.phone}</span>
               {consultant.location && (
-                <span className={styles.profileContact}>
-                  <Location20Regular style={{ fontSize: 16 }} />
-                  {consultant.location.city}, {consultant.location.state}, {consultant.location.country}
-                </span>
+                <span className={s.profileContact} style={{ color: `${t.bannerText}d9` }}><Location20Regular style={{ fontSize: 16 }} />{consultant.location.city}, {consultant.location.state}, {consultant.location.country}</span>
               )}
             </div>
           </div>
         </div>
 
         {/* Stats */}
-        <div className={styles.statsGrid}>
-          <div className={styles.statCard}>
-            <span className={styles.statValue}>{myAssignments.length}</span>
-            <span className={styles.statLabel}>Active Projects</span>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statValue}>{forecastHrs.toLocaleString()}</span>
-            <span className={styles.statLabel}>Forecast Hours</span>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statValue}>{deliveredHrs.toLocaleString()}</span>
-            <span className={styles.statLabel}>Delivered Hours</span>
-          </div>
+        <div className={s.statsGrid}>
+          {[{ v: myAsn.length, l: "Active Projects" }, { v: forecastHrs.toLocaleString(), l: "Forecast Hours" }, { v: deliveredHrs.toLocaleString(), l: "Delivered Hours" }].map(({ v, l }) => (
+            <div key={l} style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 28, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.5px" }}>{v}</span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary, textTransform: "uppercase", letterSpacing: "0.3px" }}>{l}</span>
+            </div>
+          ))}
         </div>
 
         {/* Skills */}
         {consultant.skills?.length > 0 && (
-          <div className={styles.section}>
-            <div className={styles.sectionLabel}><PersonBoard20Regular />Skills</div>
-            <div className={styles.tagRow}>
-              {consultant.skills.map((s) => (
-                <span key={s} className={styles.skillTag}>{s}</span>
-              ))}
-            </div>
+          <div style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, color: t.textPrimary }}><PersonBoard20Regular />Skills</div>
+            <div className={s.tagRow}>{consultant.skills.map((sk) => <Pill key={sk} bg={t.brandLight} color={t.brandDark} border={`1px solid ${t.brand}26`}>{sk}</Pill>)}</div>
           </div>
         )}
-
-        {/* Certifications */}
         {consultant.certifications?.length > 0 && (
-          <div className={styles.section}>
-            <div className={styles.sectionLabel}><Certificate20Regular />Certifications</div>
-            <div className={styles.tagRow}>
-              {consultant.certifications.map((c) => (
-                <span key={c} className={styles.certTag}>{c}</span>
-              ))}
-            </div>
+          <div style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, color: t.textPrimary }}><Certificate20Regular />Certifications</div>
+            <div className={s.tagRow}>{consultant.certifications.map((c) => <Pill key={c} bg={t.greenBg} color={t.green} border={`1px solid ${t.green}26`}>{c}</Pill>)}</div>
           </div>
         )}
-
-        {/* Roles */}
         {consultant.roles?.length > 0 && (
-          <div className={styles.section}>
-            <div className={styles.sectionLabel}><Briefcase20Regular />Roles</div>
-            <div className={styles.tagRow}>
-              {consultant.roles.map((r) => (
-                <span key={r} className={styles.roleTag}>{r}</span>
-              ))}
-            </div>
+          <div style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, color: t.textPrimary }}><Briefcase20Regular />Roles</div>
+            <div className={s.tagRow}>{consultant.roles.map((r) => <Pill key={r} bg={t.purpleBg} color={t.purple} border={`1px solid ${t.purple}26`}>{r}</Pill>)}</div>
           </div>
         )}
 
         {/* Assignments table */}
-        {myAssignments.length > 0 && (
+        {myAsn.length > 0 && (
           <>
-            <div className={styles.sectionHeader}>
-              <span className={styles.sectionTitle}>Assignments</span>
-              <span className={styles.sectionCount}>{myAssignments.length}</span>
+            <div className={s.sectionHeader}>
+              <span style={{ fontSize: 16, fontWeight: 600, color: t.textPrimary }}>Assignments</span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: t.textTertiary, background: t.surface, padding: "2px 10px", borderRadius: 12 }}>{myAsn.length}</span>
             </div>
-            <div className={styles.tableWrapper}>
-              <Table className={styles.table} size="small">
-                <TableHeader className={styles.tableHeader}>
-                  <TableRow>
-                    <TableHeaderCell>Project</TableHeaderCell>
-                    <TableHeaderCell>Role</TableHeaderCell>
-                    <TableHeaderCell>Billable</TableHeaderCell>
-                    <TableHeaderCell>Rate</TableHeaderCell>
-                    <TableHeaderCell>Forecast Hrs</TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
+            <div className={s.tableWrapper} style={{ border: `1px solid ${t.divider}`, background: t.cardBg }}>
+              <Table className={s.table} size="small">
+                <TableHeader style={{ background: t.surface }}><TableRow>
+                  <TableHeaderCell>Project</TableHeaderCell><TableHeaderCell>Role</TableHeaderCell><TableHeaderCell>Billable</TableHeaderCell><TableHeaderCell>Rate</TableHeaderCell><TableHeaderCell>Forecast Hrs</TableHeaderCell>
+                </TableRow></TableHeader>
                 <TableBody>
-                  {myAssignments.map((asn, i) => {
-                    const fh = (asn.forecast ?? []).reduce((s, f) => s + f.hours, 0);
+                  {myAsn.map((asn, i) => {
+                    const fh = (asn.forecast ?? []).reduce((x, f) => x + f.hours, 0);
                     return (
                       <TableRow key={i}>
-                        <TableCell>
-                          <span
-                            style={{ color: BRAND, fontWeight: 500, cursor: "pointer" }}
-                            onClick={() => setViewState({ view: "project", id: asn.projectId })}
-                          >
-                            {asn.projectName ?? `Project ${asn.projectId}`}
-                          </span>
-                        </TableCell>
-                        <TableCell><span className={styles.roleTag}>{asn.role}</span></TableCell>
-                        <TableCell>
-                          <span
-                            style={{
-                              padding: "2px 10px",
-                              borderRadius: "12px",
-                              fontSize: "12px",
-                              fontWeight: 500,
-                              background: asn.billable ? GREEN_BG : AMBER_BG,
-                              color: asn.billable ? GREEN : AMBER,
-                            }}
-                          >
-                            {asn.billable ? "Billable" : "Non-billable"}
-                          </span>
-                        </TableCell>
+                        <TableCell><span style={{ color: t.brand, fontWeight: 500, cursor: "pointer" }} onClick={() => setViewState({ view: "project", id: asn.projectId })}>{asn.projectName ?? `Project ${asn.projectId}`}</span></TableCell>
+                        <TableCell><Pill bg={t.purpleBg} color={t.purple}>{asn.role}</Pill></TableCell>
+                        <TableCell><BillablePill billable={asn.billable} t={t} /></TableCell>
                         <TableCell><Body1>${asn.rate}/hr</Body1></TableCell>
                         <TableCell><Body1 style={{ fontWeight: 600 }}>{fh.toLocaleString()}</Body1></TableCell>
                       </TableRow>
@@ -752,109 +219,79 @@ export function Dashboard() {
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
-     PROJECT DETAIL VIEW
+     PROJECT DETAIL
      ═══════════════════════════════════════════════════════════════════════ */
   if (viewState.view === "project") {
     const project = data.projects.find((p) => p.id === viewState.id);
     if (!project) {
       return (
-        <div className={styles.root}>
-          <div className={styles.breadcrumb}>
-            <span className={styles.breadcrumbLink} onClick={() => setViewState({ view: "dashboard" })}>Dashboard</span>
-            <ChevronRight16Regular />
-            <span>Not found</span>
+        <div className={s.root} style={{ background: t.surface, color: t.textPrimary }}>
+          <div className={s.breadcrumb} style={{ color: t.textSecondary }}>
+            <span style={{ color: t.brand, cursor: "pointer", fontWeight: 500 }} onClick={() => setViewState({ view: "dashboard" })}>Dashboard</span>
+            <ChevronRight16Regular /><span>Not found</span>
           </div>
           <Body1>Project not found.</Body1>
         </div>
       );
     }
-    const projAssignments = allAssignments.filter((a) => a.projectId === project.id);
-    const totalHrs = projAssignments.reduce(
-      (sum, a) => sum + (a.forecast ?? []).reduce((s, f) => s + f.hours, 0),
-      0
-    );
+    const projAsn = allAssignments.filter((a) => a.projectId === project.id);
+    const totalHrs = projAsn.reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
 
     return (
-      <div className={styles.root}>
-        {/* Breadcrumb */}
-        <div className={styles.breadcrumb}>
-          <span className={styles.breadcrumbLink} onClick={() => setViewState({ view: "dashboard" })}>
-            <ArrowLeft16Regular style={{ verticalAlign: "middle", marginRight: 2 }} />
-            Dashboard
+      <div className={s.root} style={{ background: t.surface, color: t.textPrimary }}>
+        <div className={s.breadcrumb} style={{ color: t.textSecondary }}>
+          <span style={{ color: t.brand, cursor: "pointer", fontWeight: 500 }} onClick={() => setViewState({ view: "dashboard" })}>
+            <ArrowLeft16Regular style={{ verticalAlign: "middle", marginRight: 2 }} />Dashboard
           </span>
           <ChevronRight16Regular />
-          <span style={{ color: TEXT_PRIMARY, fontWeight: 500 }}>{project.name}</span>
+          <span style={{ color: t.textPrimary, fontWeight: 500 }}>{project.name}</span>
         </div>
 
-        {/* Project header card */}
-        <div className={styles.projectBanner}>
-          <div className={styles.projectDetailTitle}>{project.name}</div>
-          <Body1 style={{ color: TEXT_SECONDARY, lineHeight: "1.5" }}>{project.description}</Body1>
+        <div style={{ ...cardStyle, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.3px" }}>{project.name}</div>
+          <Body1 style={{ color: t.textSecondary, lineHeight: "1.5" }}>{project.description}</Body1>
           <Divider style={{ margin: "4px 0" }} />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "16px" }}>
-            <span className={styles.clientRow}><Building20Regular /><strong>Client:</strong> {project.clientName}</span>
-            <span className={styles.clientRow}><People20Regular /><strong>Contact:</strong> {project.clientContact}</span>
-            <span className={styles.clientRow}><Mail20Regular />{project.clientEmail}</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textSecondary }}><Building20Regular /><strong>Client:</strong> {project.clientName}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textSecondary }}><People24Regular /><strong>Contact:</strong> {project.clientContact}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textSecondary }}><Mail20Regular />{project.clientEmail}</span>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className={styles.statsGrid}>
-          <div className={styles.statCard}>
-            <span className={styles.statValue}>{projAssignments.length}</span>
-            <span className={styles.statLabel}>Team Members</span>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statValue}>{totalHrs.toLocaleString()}</span>
-            <span className={styles.statLabel}>Total Forecast Hours</span>
-          </div>
-        </div>
-
-        {/* Team table */}
-        {projAssignments.length > 0 && (
-          <>
-            <div className={styles.sectionHeader}>
-              <span className={styles.sectionTitle}>Team</span>
-              <span className={styles.sectionCount}>{projAssignments.length} members</span>
+        <div className={s.statsGrid}>
+          {[{ v: projAsn.length, l: "Team Members" }, { v: totalHrs.toLocaleString(), l: "Total Forecast Hours" }].map(({ v, l }) => (
+            <div key={l} style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 28, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.5px" }}>{v}</span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary, textTransform: "uppercase", letterSpacing: "0.3px" }}>{l}</span>
             </div>
-            <div className={styles.tableWrapper}>
-              <Table className={styles.table} size="small">
-                <TableHeader className={styles.tableHeader}>
-                  <TableRow>
-                    <TableHeaderCell>Consultant</TableHeaderCell>
-                    <TableHeaderCell>Role</TableHeaderCell>
-                    <TableHeaderCell>Billable</TableHeaderCell>
-                    <TableHeaderCell>Rate</TableHeaderCell>
-                    <TableHeaderCell>Forecast Hrs</TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
+          ))}
+        </div>
+
+        {projAsn.length > 0 && (
+          <>
+            <div className={s.sectionHeader}>
+              <span style={{ fontSize: 16, fontWeight: 600, color: t.textPrimary }}>Team</span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: t.textTertiary, background: t.surface, padding: "2px 10px", borderRadius: 12 }}>{projAsn.length} members</span>
+            </div>
+            <div className={s.tableWrapper} style={{ border: `1px solid ${t.divider}`, background: t.cardBg }}>
+              <Table className={s.table} size="small">
+                <TableHeader style={{ background: t.surface }}><TableRow>
+                  <TableHeaderCell>Consultant</TableHeaderCell><TableHeaderCell>Role</TableHeaderCell><TableHeaderCell>Billable</TableHeaderCell><TableHeaderCell>Rate</TableHeaderCell><TableHeaderCell>Forecast Hrs</TableHeaderCell>
+                </TableRow></TableHeader>
                 <TableBody>
-                  {projAssignments.map((asn, i) => {
+                  {projAsn.map((asn, i) => {
                     const c = data.consultants.find((x) => x.id === asn.consultantId);
-                    const fh = (asn.forecast ?? []).reduce((s, f) => s + f.hours, 0);
+                    const fh = (asn.forecast ?? []).reduce((x, f) => x + f.hours, 0);
                     return (
                       <TableRow key={i}>
                         <TableCell>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setViewState({ view: "consultant", id: asn.consultantId })}>
                             <Avatar src={c?.photoUrl} name={asn.consultantName ?? "?"} size={32} />
-                            <span style={{ color: BRAND, fontWeight: 500 }}>{asn.consultantName ?? `Consultant ${asn.consultantId}`}</span>
+                            <span style={{ color: t.brand, fontWeight: 500 }}>{asn.consultantName ?? `Consultant ${asn.consultantId}`}</span>
                           </div>
                         </TableCell>
-                        <TableCell><span className={styles.roleTag}>{asn.role}</span></TableCell>
-                        <TableCell>
-                          <span
-                            style={{
-                              padding: "2px 10px",
-                              borderRadius: "12px",
-                              fontSize: "12px",
-                              fontWeight: 500,
-                              background: asn.billable ? GREEN_BG : AMBER_BG,
-                              color: asn.billable ? GREEN : AMBER,
-                            }}
-                          >
-                            {asn.billable ? "Billable" : "Non-billable"}
-                          </span>
-                        </TableCell>
+                        <TableCell><Pill bg={t.purpleBg} color={t.purple}>{asn.role}</Pill></TableCell>
+                        <TableCell><BillablePill billable={asn.billable} t={t} /></TableCell>
                         <TableCell><Body1>${asn.rate}/hr</Body1></TableCell>
                         <TableCell><Body1 style={{ fontWeight: 600 }}>{fh.toLocaleString()}</Body1></TableCell>
                       </TableRow>
@@ -870,16 +307,16 @@ export function Dashboard() {
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
-     MAIN DASHBOARD VIEW
+     MAIN DASHBOARD
      ═══════════════════════════════════════════════════════════════════════ */
   return (
-    <div className={styles.root}>
+    <div className={s.root} style={{ background: t.surface, color: t.textPrimary }}>
       {/* Header */}
-      <div className={styles.headerBar}>
+      <div className={s.headerBar}>
         <div>
-          <div className={styles.headerTitle}>HR Consultant Dashboard</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.3px" }}>HR Consultant Dashboard</div>
           {data.summary?.searchApplied && (
-            <div className={styles.headerSubtitle}>
+            <div style={{ fontSize: 13, color: t.textSecondary, fontWeight: 400 }}>
               Filtered by:{" "}
               {data.summary.searchCriteria?.skill && `skill = "${data.summary.searchCriteria.skill}"`}
               {data.summary.searchCriteria?.name && ` name = "${data.summary.searchCriteria.name}"`}
@@ -888,70 +325,49 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className={styles.kpiGrid}>
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiIconBox} style={{ background: BRAND_LIGHT, color: BRAND }}>
-            <People24Regular />
+      {/* KPI */}
+      <div className={s.kpiGrid}>
+        {[
+          { icon: <People24Regular />, val: data.summary.totalConsultants, label: "Consultants", ibg: t.brandLight, ic: t.brand },
+          { icon: <Briefcase24Regular />, val: data.summary.totalProjects, label: "Projects", ibg: t.purpleBg, ic: t.purple },
+          { icon: <Clock24Regular />, val: data.summary.totalBillableHours.toLocaleString(), label: "Billable Hours", ibg: t.greenBg, ic: t.green },
+          { icon: <MoneyHand20Regular />, val: data.summary.totalAssignments, label: "Assignments", ibg: t.amberBg, ic: t.amber },
+        ].map(({ icon, val, label, ibg, ic }) => (
+          <div key={label} style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", gap: 8, transition: "box-shadow 0.15s ease, transform 0.15s ease", cursor: "default" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 1px 3px rgba(0,0,0,0.06)"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
+          >
+            <div style={{ width: 40, height: 40, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: ibg, color: ic }}>{icon}</div>
+            <span style={{ fontSize: 30, fontWeight: 700, lineHeight: "1.1", color: t.textPrimary, letterSpacing: "-0.5px" }}>{val}</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</span>
           </div>
-          <span className={styles.kpiValue}>{data.summary.totalConsultants}</span>
-          <span className={styles.kpiLabel}>Consultants</span>
-        </div>
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiIconBox} style={{ background: "#f3e8ff", color: "#7c3aed" }}>
-            <Briefcase24Regular />
-          </div>
-          <span className={styles.kpiValue}>{data.summary.totalProjects}</span>
-          <span className={styles.kpiLabel}>Projects</span>
-        </div>
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiIconBox} style={{ background: GREEN_BG, color: GREEN }}>
-            <Clock24Regular />
-          </div>
-          <span className={styles.kpiValue}>{data.summary.totalBillableHours.toLocaleString()}</span>
-          <span className={styles.kpiLabel}>Billable Hours</span>
-        </div>
-        <div className={styles.kpiCard}>
-          <div className={styles.kpiIconBox} style={{ background: AMBER_BG, color: AMBER }}>
-            <MoneyHand20Regular />
-          </div>
-          <span className={styles.kpiValue}>{data.summary.totalAssignments}</span>
-          <span className={styles.kpiLabel}>Assignments</span>
-        </div>
+        ))}
       </div>
 
       {/* Consultants */}
       {data.consultants.length > 0 && (
         <>
-          <div className={styles.sectionHeader}>
-            <span className={styles.sectionTitle}>Consultants</span>
-            <span className={styles.sectionCount}>{data.consultants.length}</span>
+          <div className={s.sectionHeader}>
+            <span style={{ fontSize: 16, fontWeight: 600, color: t.textPrimary }}>Consultants</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: t.textTertiary, background: t.surface, padding: "2px 10px", borderRadius: 12 }}>{data.consultants.length}</span>
           </div>
-          <div className={styles.consultantCards}>
+          <div className={s.cards}>
             {data.consultants.map((c: Consultant) => (
-              <div
-                key={c.id}
-                className={styles.consultantCard}
+              <div key={c.id}
+                style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", cursor: "pointer", transition: "box-shadow 0.15s ease, border-color 0.15s ease" }}
+                onMouseEnter={(e) => hoverCard(e, true)} onMouseLeave={(e) => hoverCard(e, false)}
                 onClick={() => setViewState({ view: "consultant", id: c.id })}
               >
                 <Avatar src={c.photoUrl} name={c.name} size={48} />
-                <div className={styles.consultantInfo}>
-                  <div className={styles.consultantName}>{c.name}</div>
-                  <div className={styles.consultantMeta}>
-                    {c.location.city}, {c.location.country} &middot; {c.email}
-                  </div>
-                  <div className={styles.consultantBadges}>
-                    {c.skills.slice(0, 4).map((s) => (
-                      <span key={s} className={styles.skillTag}>{s}</span>
-                    ))}
-                    {c.skills.length > 4 && (
-                      <span className={styles.skillTag} style={{ background: "transparent", color: TEXT_TERTIARY, border: `1px dashed ${DIVIDER}` }}>
-                        +{c.skills.length - 4} more
-                      </span>
-                    )}
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: t.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                  <div style={{ fontSize: 13, color: t.textSecondary }}>{c.location.city}, {c.location.country} &middot; {c.email}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                    {c.skills.slice(0, 4).map((sk) => <Pill key={sk} bg={t.brandLight} color={t.brandDark} border={`1px solid ${t.brand}26`}>{sk}</Pill>)}
+                    {c.skills.length > 4 && <Pill bg="transparent" color={t.textTertiary} border={`1px dashed ${t.divider}`}>+{c.skills.length - 4} more</Pill>}
                   </div>
                 </div>
-                <ChevronRight16Regular className={styles.consultantChevron} />
+                <ChevronRight16Regular style={{ color: t.textTertiary, flexShrink: 0 }} />
               </div>
             ))}
           </div>
@@ -961,39 +377,37 @@ export function Dashboard() {
       {/* Projects */}
       {data.projects.length > 0 && (
         <>
-          <div className={styles.sectionHeader} style={{ marginTop: "4px" }}>
-            <span className={styles.sectionTitle}>Projects</span>
-            <span className={styles.sectionCount}>{data.projects.length}</span>
+          <div className={s.sectionHeader} style={{ marginTop: 4 }}>
+            <span style={{ fontSize: 16, fontWeight: 600, color: t.textPrimary }}>Projects</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: t.textTertiary, background: t.surface, padding: "2px 10px", borderRadius: 12 }}>{data.projects.length}</span>
           </div>
-          <div className={styles.projectCards}>
+          <div className={s.cards}>
             {data.projects.map((p: Project) => (
-              <div
-                key={p.id}
-                className={styles.projectCard}
+              <div key={p.id}
+                style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", cursor: "pointer", transition: "box-shadow 0.15s ease, border-color 0.15s ease" }}
+                onMouseEnter={(e) => hoverCard(e, true)} onMouseLeave={(e) => hoverCard(e, false)}
                 onClick={() => setViewState({ view: "project", id: p.id })}
               >
-                <div className={styles.projectIconBox}>
+                <div style={{ width: 44, height: 44, borderRadius: 10, background: t.brandLight, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: t.brand }}>
                   <Briefcase20Regular />
                 </div>
-                <div className={styles.projectInfo}>
-                  <div className={styles.projectName}>{p.name}</div>
-                  <div className={styles.projectMeta}>{p.clientName} &middot; {p.description}</div>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: t.textPrimary }}>{p.name}</div>
+                  <div style={{ fontSize: 13, color: t.textSecondary }}>{p.clientName} &middot; {p.description}</div>
                 </div>
-                <ChevronRight16Regular className={styles.consultantChevron} />
+                <ChevronRight16Regular style={{ color: t.textTertiary, flexShrink: 0 }} />
               </div>
             ))}
           </div>
         </>
       )}
 
-      {/* Empty state */}
+      {/* Empty */}
       {data.consultants.length === 0 && data.projects.length === 0 && (
-        <div className={styles.noData}>
-          <People24Regular style={{ fontSize: 40, color: TEXT_TERTIARY, display: "block", margin: "0 auto 12px" }} />
+        <div style={{ ...cardStyle, padding: "48px 24px", textAlign: "center", color: t.textTertiary }}>
+          <People24Regular style={{ fontSize: 40, color: t.textTertiary, display: "block", margin: "0 auto 12px" }} />
           <Body1>No data loaded yet.</Body1>
-          <Caption1 style={{ marginTop: 4, color: TEXT_TERTIARY }}>
-            Use the MCP tool to hydrate this dashboard with HR data.
-          </Caption1>
+          <Caption1 style={{ marginTop: 4, color: t.textTertiary }}>Use the MCP tool to hydrate this dashboard with HR data.</Caption1>
         </div>
       )}
     </div>
