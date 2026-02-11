@@ -477,6 +477,17 @@ export function createHRServer(): Server {
           const dashboardData = {
             consultants: consultants.map(parseConsultant),
             projects: projects.map(parseProject),
+            assignments: assignments.map((a) => {
+              const parsed = parseAssignment(a);
+              const proj = projects.find((p) => p.rowKey === a.projectId);
+              const cons = consultants.find((c) => c.rowKey === a.consultantId);
+              return {
+                ...parsed,
+                projectName: proj?.name ?? "Unknown",
+                clientName: proj?.clientName ?? "Unknown",
+                consultantName: cons?.name ?? "Unknown",
+              };
+            }),
             summary: {
               totalConsultants: consultants.length,
               totalProjects: projects.length,

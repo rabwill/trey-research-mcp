@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start MCP Server",
+			"type": "shell",
+			"command": "cd /Users/rabiawilliams/Documents/trey-02-mcp && npx tsx server/src/index.ts",
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

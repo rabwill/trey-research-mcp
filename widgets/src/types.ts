@@ -66,6 +66,7 @@ export interface DashboardSummary {
 export interface DashboardData {
   consultants: Consultant[];
   projects: Project[];
+  assignments?: Assignment[];
   summary: DashboardSummary;
 }
 
