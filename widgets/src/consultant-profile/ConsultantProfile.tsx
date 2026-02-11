@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Card,
   Text,
@@ -28,6 +28,8 @@ import {
   Certificate20Regular,
   Briefcase20Regular,
   ArrowLeft16Regular,
+  FullScreenMaximize24Regular,
+  FullScreenMinimize24Regular,
 } from "@fluentui/react-icons";
 import { useOpenAiGlobal } from "../hooks/useOpenAiGlobal";
 import type { ConsultantProfileData, Assignment } from "../types";
@@ -140,8 +142,48 @@ export function ConsultantProfile() {
 
   const activeProjects = assignments.length;
 
+  // Fullscreen toggle — starts inline, switches on button click
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (window.openai?.requestDisplayMode) {
+      const current = window.openai.displayMode;
+      await window.openai.requestDisplayMode({ mode: current === "fullscreen" ? "inline" : "fullscreen" });
+      return;
+    }
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        return;
+      } else {
+        await document.exitFullscreen();
+        return;
+      }
+    } catch { /* not supported */ }
+    setIsFullscreen((prev) => !prev);
+  }, []);
+
   return (
-    <div className={styles.root}>
+    <div className={styles.root} style={isFullscreen ? {
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      zIndex: 9999, overflowY: "auto", background: tokens.colorNeutralBackground1,
+    } : undefined}>
+      {/* ── Fullscreen toggle ── */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <Button
+          appearance="subtle"
+          icon={isFullscreen ? <FullScreenMinimize24Regular /> : <FullScreenMaximize24Regular />}
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        />
+      </div>
+
       {/* ── Profile Header ── */}
       <Card>
         <div className={styles.profileHeader}>

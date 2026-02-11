@@ -137,3 +137,37 @@ export async function getAssignmentsByConsultant(consultantId: string): Promise<
   const all = await getAllAssignments();
   return all.filter((a) => a.consultantId === consultantId);
 }
+
+export async function createAssignment(data: {
+  projectId: string;
+  consultantId: string;
+  role: string;
+  billable?: boolean;
+  rate?: number;
+  forecast?: Array<{ month: number; year: number; hours: number }>;
+}): Promise<AssignmentEntity> {
+  const rowKey = `${data.projectId},${data.consultantId}`;
+  const entity = {
+    partitionKey: "assignment",
+    rowKey,
+    projectId: data.projectId,
+    consultantId: data.consultantId,
+    role: data.role,
+    billable: data.billable ?? true,
+    rate: data.rate ?? 0,
+    forecast: JSON.stringify(data.forecast ?? []),
+    delivered: JSON.stringify([]),
+  };
+  await assignmentsTable.upsertEntity(entity as any, "Replace");
+  return assignmentsTable.getEntity<AssignmentEntity>("assignment", rowKey);
+}
+
+export async function deleteAssignment(projectId: string, consultantId: string): Promise<boolean> {
+  const rowKey = `${projectId},${consultantId}`;
+  try {
+    await assignmentsTable.deleteEntity("assignment", rowKey);
+    return true;
+  } catch {
+    return false;
+  }
+}

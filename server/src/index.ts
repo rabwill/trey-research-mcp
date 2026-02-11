@@ -14,24 +14,146 @@ const PORT = parseInt(process.env.PORT ?? "8000", 10);
 
 const app = express();
 
-// CORS – allow all origins so ChatGPT / MCP Inspector can reach us
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Accept",
-      "Mcp-Session-Id",
-      "mcp-session-id",
-      "Last-Event-ID",
-      "Mcp-Protocol-Version",
-      "mcp-protocol-version",
-    ],
-    exposedHeaders: ["Mcp-Session-Id"],
-    credentials: false,
-  })
-);
+// ─── Origin allowlist ────────────────────────────────────────────────
+// Exact origins and dot-prefixed wildcard suffixes.
+// Dot-prefix (e.g. ".example.com") matches any subdomain.
+const STATIC_ALLOWED_ORIGINS: string[] = [
+  // Local development
+  "http://localhost",
+  "http://127.0.0.1",
+  "https://localhost",
+  "https://127.0.0.1",
+  // VS Code webview
+  "vscode-webview://",
+  // ChatGPT / OpenAI
+  ".chatgpt.com",
+  ".openai.com",
+  // Microsoft 365 Copilot / Office
+  ".widgetcopilot.net",
+  ".microsoft.com",
+  ".cloud.microsoft",
+  ".office.com",
+  ".office365.com",
+  ".sharepoint.com",
+  ".live.com",
+  ".microsoft365.com",
+  ".teams.microsoft.com",
+  // Dev tunnels
+  ".devtunnels.ms",
+  ".ngrok-free.app",
+  ".ngrok.io",
+  ".loca.lt",
+  ".trycloudflare.com",
+];
+
+/**
+ * Build the full origin set at startup, merging static list with
+ * env-driven values: SERVER_BASE_URL and ADDITIONAL_ALLOWED_ORIGINS.
+ */
+function buildAllowedOrigins(): string[] {
+  const origins = [...STATIC_ALLOWED_ORIGINS];
+
+  // SERVER_BASE_URL – the public-facing URL of this server (e.g. a tunnel)
+  const serverBase = process.env.SERVER_BASE_URL;
+  if (serverBase) {
+    try {
+      const u = new URL(serverBase);
+      origins.push(u.origin);            // exact origin
+      origins.push(`.${u.hostname}`);    // also allow subdomains
+    } catch { /* ignore malformed URL */ }
+  }
+
+  // ADDITIONAL_ALLOWED_ORIGINS – comma-separated extra origins/suffixes
+  const extra = process.env.ADDITIONAL_ALLOWED_ORIGINS;
+  if (extra) {
+    for (const raw of extra.split(",")) {
+      const trimmed = raw.trim();
+      if (trimmed) origins.push(trimmed);
+    }
+  }
+
+  return origins;
+}
+
+const ALLOWED_ORIGINS = buildAllowedOrigins();
+
+/** Check whether a request origin is permitted. */
+function isOriginAllowed(origin: string | undefined): boolean {
+  // Sandboxed iframes (ChatGPT, M365 Copilot) send "null" as the origin.
+  if (!origin || origin === "null") return true;
+
+  for (const entry of ALLOWED_ORIGINS) {
+    // Scheme-prefix match (e.g. "vscode-webview://")
+    if (entry.endsWith("://") && origin.startsWith(entry)) return true;
+
+    // Localhost with any port
+    if (
+      (entry === "http://localhost" || entry === "https://localhost") &&
+      origin.startsWith(entry)
+    ) return true;
+    if (
+      (entry === "http://127.0.0.1" || entry === "https://127.0.0.1") &&
+      origin.startsWith(entry)
+    ) return true;
+
+    // Dot-prefix wildcard subdomain match
+    if (entry.startsWith(".")) {
+      try {
+        const hostname = new URL(origin).hostname;
+        if (hostname.endsWith(entry) || hostname === entry.slice(1)) return true;
+      } catch { /* not a valid URL */ }
+      continue;
+    }
+
+    // Exact match
+    if (origin === entry) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Return the public-facing base URL of this server.
+ * Prefer SERVER_BASE_URL env var (tunnel / proxy URL),
+ * otherwise fall back to http://localhost:<PORT>.
+ */
+export function getPublicServerUrl(): string {
+  const base = process.env.SERVER_BASE_URL;
+  if (base) return base.replace(/\/+$/, "");
+  return `http://localhost:${PORT}`;
+}
+
+// ─── CORS middleware ─────────────────────────────────────────────────
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      // Reflect the actual origin so the browser accepts the response.
+      // For sandboxed iframes that send "null", reflect "null" back.
+      callback(null, origin ?? true);
+    } else {
+      console.warn(`CORS: blocked origin "${origin}"`);
+      callback(null, false);
+    }
+  },
+  methods: ["GET", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Accept",
+    "Mcp-Session-Id",
+    "mcp-session-id",
+    "Last-Event-ID",
+    "Mcp-Protocol-Version",
+    "mcp-protocol-version",
+  ],
+  exposedHeaders: ["Mcp-Session-Id"],
+  // credentials: false — avoids the browser requirement that
+  // Access-Control-Allow-Origin must not be "*" when credentials are sent.
+  // MCP requests don't need cookies or auth headers from the browser.
+  credentials: false,
+};
+app.use(cors(corsOptions));
+// Use the same options for preflight on any route
+app.options("*", cors(corsOptions));
 
 app.use(express.json());
 
@@ -139,10 +261,15 @@ async function main() {
   }
 
   app.listen(PORT, () => {
+    const pub = getPublicServerUrl();
     console.log(`\n  HR Consultant MCP Server`);
     console.log(`  Transport: Streamable HTTP (stateless)`);
-    console.log(`  Endpoint:  http://localhost:${PORT}/mcp`);
-    console.log(`  Health:    http://localhost:${PORT}/health\n`);
+    console.log(`  Endpoint:  ${pub}/mcp`);
+    console.log(`  Health:    ${pub}/health`);
+    if (process.env.SERVER_BASE_URL) {
+      console.log(`  Public URL: ${pub}  (from SERVER_BASE_URL)`);
+    }
+    console.log();
   });
 }
 

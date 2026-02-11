@@ -5,8 +5,8 @@
   "description": "HR Consultant MCP Server with Streamable HTTP transport",
   "scripts": {
     "build": "tsc",
-    "start": "tsx src/index.ts",
-    "dev": "tsx --watch src/index.ts",
+    "start": "node --env-file=../.env --import tsx src/index.ts",
+    "dev": "node --env-file=../.env --import tsx --watch src/index.ts",
     "seed": "tsx src/seed.ts"
   },
   "dependencies": {
