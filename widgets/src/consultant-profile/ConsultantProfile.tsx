@@ -39,12 +39,15 @@ const useStyles = makeStyles({
     gap: "16px",
     padding: "16px",
     fontFamily: tokens.fontFamilyBase,
-    maxWidth: "800px",
+    boxSizing: "border-box",
+    width: "100%",
+    overflowX: "hidden" as const,
   },
   profileHeader: {
     display: "flex",
     gap: "20px",
     alignItems: "flex-start",
+    flexWrap: "wrap" as const,
   },
   photo: {
     width: "80px",
@@ -59,12 +62,15 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "4px",
     flex: 1,
+    minWidth: 0,
+    overflowWrap: "break-word" as const,
   },
   contactRow: {
     display: "flex",
     alignItems: "center",
     gap: "6px",
     color: tokens.colorNeutralForeground2,
+    minWidth: 0,
   },
   section: {
     display: "flex",
@@ -82,16 +88,20 @@ const useStyles = makeStyles({
     gap: "6px",
   },
   statsRow: {
-    display: "flex",
-    gap: "16px",
-    flexWrap: "wrap" as const,
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
+    gap: "12px",
   },
   statCard: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    padding: "12px 20px",
-    minWidth: "100px",
+    padding: "12px 16px",
+  },
+  tableWrapper: {
+    overflowX: "auto" as const,
+    width: "100%",
+    WebkitOverflowScrolling: "touch" as const,
   },
   noData: {
     padding: "24px",
@@ -243,7 +253,8 @@ export function ConsultantProfile() {
       <div className={styles.section}>
         <Subtitle1>Assignments</Subtitle1>
         {assignments.length > 0 ? (
-          <Table size="small">
+          <div className={styles.tableWrapper}>
+          <Table size="small" style={{ minWidth: "520px" }}>
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Project</TableHeaderCell>
@@ -299,6 +310,7 @@ export function ConsultantProfile() {
               })}
             </TableBody>
           </Table>
+          </div>
         ) : (
           <Caption1>No assignments found for this consultant.</Caption1>
         )}

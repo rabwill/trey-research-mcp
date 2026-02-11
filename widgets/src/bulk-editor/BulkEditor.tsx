@@ -43,7 +43,9 @@ const useStyles = makeStyles({
     gap: "16px",
     padding: "16px",
     fontFamily: tokens.fontFamilyBase,
-    maxWidth: "1100px",
+    boxSizing: "border-box",
+    width: "100%",
+    overflowX: "hidden" as const,
   },
   header: {
     display: "flex",
@@ -57,16 +59,31 @@ const useStyles = makeStyles({
     gap: "8px",
     alignItems: "center",
   },
+  tableWrapper: {
+    overflowX: "auto" as const,
+    width: "100%",
+    WebkitOverflowScrolling: "touch" as const,
+  },
   table: {
+    minWidth: "780px",
+    tableLayout: "fixed" as const,
     width: "100%",
   },
+  colCheck: { width: "40px" },
+  colName: { width: "18%" },
+  colEmail: { width: "22%" },
+  colPhone: { width: "15%" },
+  colSkills: { width: "25%" },
+  colRoles: { width: "20%" },
   editableCell: {
-    minWidth: "120px",
+    width: "100%",
+    minWidth: 0,
   },
   tagsInput: {
     display: "flex",
     flexDirection: "column",
     gap: "4px",
+    minWidth: 0,
   },
   tagRow: {
     display: "flex",
@@ -88,10 +105,12 @@ const useStyles = makeStyles({
     borderRadius: "50%",
     objectFit: "cover" as const,
     marginRight: "8px",
+    flexShrink: 0,
   },
   nameCell: {
     display: "flex",
     alignItems: "center",
+    minWidth: 0,
   },
 });
 
@@ -260,20 +279,21 @@ export function BulkEditor() {
 
       {/* ── Table ── */}
       {rows.length > 0 ? (
+        <div className={styles.tableWrapper}>
         <Table className={styles.table} size="small">
           <TableHeader>
             <TableRow>
-              <TableHeaderCell style={{ width: 40 }}>
+              <TableHeaderCell className={styles.colCheck}>
                 <Checkbox
                   checked={selected.size === rows.length ? true : selected.size > 0 ? "mixed" : false}
                   onChange={toggleAll}
                 />
               </TableHeaderCell>
-              <TableHeaderCell>Name</TableHeaderCell>
-              <TableHeaderCell>Email</TableHeaderCell>
-              <TableHeaderCell>Phone</TableHeaderCell>
-              <TableHeaderCell>Skills</TableHeaderCell>
-              <TableHeaderCell>Roles</TableHeaderCell>
+              <TableHeaderCell className={styles.colName}>Name</TableHeaderCell>
+              <TableHeaderCell className={styles.colEmail}>Email</TableHeaderCell>
+              <TableHeaderCell className={styles.colPhone}>Phone</TableHeaderCell>
+              <TableHeaderCell className={styles.colSkills}>Skills</TableHeaderCell>
+              <TableHeaderCell className={styles.colRoles}>Roles</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -376,6 +396,7 @@ export function BulkEditor() {
             ))}
           </TableBody>
         </Table>
+        </div>
       ) : (
         <div className={styles.noData}>
           <Body1>No consultant data loaded. Use the MCP tool to open the bulk editor.</Body1>

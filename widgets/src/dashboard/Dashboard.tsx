@@ -36,11 +36,13 @@ const useStyles = makeStyles({
     gap: "16px",
     padding: "16px",
     fontFamily: tokens.fontFamilyBase,
-    maxWidth: "900px",
+    boxSizing: "border-box",
+    width: "100%",
+    overflowX: "hidden" as const,
   },
   kpiGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
     gap: "12px",
   },
   kpiCard: {
@@ -65,19 +67,27 @@ const useStyles = makeStyles({
     justifyContent: "space-between",
     padding: "0 4px",
   },
+  tableWrapper: {
+    overflowX: "auto" as const,
+    width: "100%",
+    WebkitOverflowScrolling: "touch" as const,
+  },
   table: {
+    minWidth: "600px",
     width: "100%",
   },
   photoCell: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
+    minWidth: 0,
   },
   avatar: {
     width: "32px",
     height: "32px",
     borderRadius: "50%",
     objectFit: "cover" as const,
+    flexShrink: 0,
   },
   badgeRow: {
     display: "flex",
@@ -88,6 +98,11 @@ const useStyles = makeStyles({
     padding: "24px",
     textAlign: "center" as const,
     color: tokens.colorNeutralForeground3,
+  },
+  nameText: {
+    overflow: "hidden" as const,
+    textOverflow: "ellipsis" as const,
+    whiteSpace: "nowrap" as const,
   },
 });
 
@@ -173,6 +188,7 @@ export function Dashboard() {
           <div className={styles.sectionHeader}>
             <Subtitle1>Consultants</Subtitle1>
           </div>
+          <div className={styles.tableWrapper}>
           <Table className={styles.table} size="small">
             <TableHeader>
               <TableRow>
@@ -247,6 +263,7 @@ export function Dashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </>
       )}
 
@@ -257,6 +274,7 @@ export function Dashboard() {
           <div className={styles.sectionHeader}>
             <Subtitle1>Projects</Subtitle1>
           </div>
+          <div className={styles.tableWrapper}>
           <Table className={styles.table} size="small">
             <TableHeader>
               <TableRow>
@@ -292,6 +310,7 @@ export function Dashboard() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </>
       )}
 
