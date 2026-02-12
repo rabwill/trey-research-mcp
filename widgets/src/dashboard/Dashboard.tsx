@@ -476,7 +476,7 @@ export function Dashboard() {
             HR Analytics Dashboard
           </div>
           <div style={{ fontSize: 13, color: t.textSecondary, marginTop: 2 }}>
-            Extended view &middot; {data.summary.totalConsultants} consultants &middot; {data.summary.totalProjects} projects
+            Dashboard view &middot; {data.summary.totalConsultants} consultants &middot; {data.summary.totalProjects} projects
           </div>
         </div>
         <button
