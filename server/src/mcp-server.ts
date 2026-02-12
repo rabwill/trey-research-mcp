@@ -253,7 +253,16 @@ const searchInputSchema = {
 
 const bulkEditorInputSchema = {
   type: "object" as const,
-  properties: {},
+  properties: {
+    skill: {
+      type: "string" as const,
+      description: "Optional skill to filter consultants (partial match, case-insensitive).",
+    },
+    name: {
+      type: "string" as const,
+      description: "Optional name to filter consultants (partial match, case-insensitive).",
+    },
+  },
   additionalProperties: false,
 };
 
@@ -414,6 +423,10 @@ const bulkUpdateParser = z.object({
   roles: z.array(z.string()).optional(),
 });
 const projectDetailParser = z.object({ projectId: z.string() });
+const bulkEditorParser = z.object({
+  skill: z.string().optional(),
+  name: z.string().optional(),
+});
 
 const assignConsultantParser = z.object({
   projectId: z.string(),
@@ -532,9 +545,9 @@ export function createHRServer(): Server {
       name: "search-consultants",
       title: "Search Consultants",
       description:
-        "Search consultants by skill or name. Returns matching consultants shown in the dashboard widget.",
+        "Search consultants by skill or name. Returns matching consultants in the bulk editor widget for easy viewing and editing.",
       inputSchema: searchInputSchema,
-      _meta: descriptorMeta(DASHBOARD_WIDGET),
+      _meta: descriptorMeta(BULK_EDITOR_WIDGET),
       annotations: {
         destructiveHint: false,
         openWorldHint: false,
@@ -545,7 +558,7 @@ export function createHRServer(): Server {
       name: "show-bulk-editor",
       title: "Show Bulk Editor",
       description:
-        "Open the bulk editor widget to view and edit multiple consultant records at once, including skills, roles, contact details.",
+        "Open the bulk editor widget to view and edit consultant records. Accepts optional filters: skill, name — to show only matching consultants.",
       inputSchema: bulkEditorInputSchema,
       _meta: descriptorMeta(BULK_EDITOR_WIDGET),
       annotations: {
@@ -781,19 +794,6 @@ export function createHRServer(): Server {
             );
           }
 
-          const dashboardData = {
-            consultants: results.map(parseConsultant),
-            projects: [],
-            summary: {
-              totalConsultants: results.length,
-              totalProjects: 0,
-              totalAssignments: 0,
-              totalBillableHours: 0,
-              searchApplied: true,
-              searchCriteria: { skill, name: nameFilter },
-            },
-          };
-
           return {
             content: [
               {
@@ -801,19 +801,37 @@ export function createHRServer(): Server {
                 text: `Found ${results.length} consultant(s) matching criteria.`,
               },
             ],
-            structuredContent: dashboardData,
-            _meta: invocationMeta(DASHBOARD_WIDGET),
+            structuredContent: {
+              consultants: results.map(parseConsultant),
+            },
+            _meta: invocationMeta(BULK_EDITOR_WIDGET),
           };
         }
 
         // ──── Bulk Editor ────
         case "show-bulk-editor": {
-          const consultants = await db.getAllConsultants();
+          const filters = bulkEditorParser.parse(args);
+          let consultants = await db.getAllConsultants();
+
+          if (filters.skill) {
+            consultants = consultants.filter((c) => {
+              const skills: string[] = JSON.parse(c.skills || "[]");
+              return skills.some((s) => s.toLowerCase().includes(filters.skill!.toLowerCase()));
+            });
+          }
+          if (filters.name) {
+            consultants = consultants.filter((c) =>
+              c.name.toLowerCase().includes(filters.name!.toLowerCase())
+            );
+          }
+
+          const filterDesc = [filters.skill && `skill: "${filters.skill}"`, filters.name && `name: "${filters.name}"`].filter(Boolean).join(", ");
+
           return {
             content: [
               {
                 type: "text" as const,
-                text: `Bulk editor loaded with ${consultants.length} consultant records.`,
+                text: `Bulk editor loaded with ${consultants.length} consultant record(s)${filterDesc ? ` (filtered by ${filterDesc})` : ""}.`,
               },
             ],
             structuredContent: {
