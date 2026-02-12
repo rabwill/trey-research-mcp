@@ -31,6 +31,10 @@ import {
   ArrowLeft16Regular,
   FullScreenMaximize24Regular,
   FullScreenMinimize24Regular,
+  Add16Regular,
+  Checkmark16Regular,
+  Dismiss16Regular,
+  PersonAdd20Regular,
 } from "@fluentui/react-icons";
 import { useOpenAiGlobal } from "../hooks/useOpenAiGlobal";
 import { useThemeColors, type ThemeColors } from "../hooks/useThemeColors";
@@ -208,6 +212,16 @@ export function Dashboard() {
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "hours" | "rate">("name");
   const [showFilters, setShowFilters] = useState(false);
+
+  /* ── Assign-to-project state ── */
+  const [assigningProject, setAssigningProject] = useState<string | null>(null);
+  const [assignSelectedIds, setAssignSelectedIds] = useState<Set<string>>(new Set());
+  const [assignRole, setAssignRole] = useState("Consultant");
+  const [assignRate, setAssignRate] = useState(0);
+  const [assignBillable, setAssignBillable] = useState(true);
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [assignMessage, setAssignMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [assignSearch, setAssignSearch] = useState("");
 
   /* ── Global filter state ── */
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
@@ -909,6 +923,165 @@ export function Dashboard() {
                             </div>
                           </div>
                         )}
+
+                        {/* ── Assign Consultants Section ── */}
+                        {(() => {
+                          const isAssigning = assigningProject === p.id;
+                          const alreadyAssignedIds = new Set(p.assignments.map((a) => a.consultantId));
+                          const availableConsultants = data.consultants.filter((c) => !alreadyAssignedIds.has(c.id));
+                          const filteredAvailable = availableConsultants.filter((c) => {
+                            if (!assignSearch) return true;
+                            const q = assignSearch.toLowerCase();
+                            return c.name.toLowerCase().includes(q) || c.skills?.some((sk) => sk.toLowerCase().includes(q));
+                          });
+                          return (
+                            <div>
+                              {!isAssigning ? (
+                                <button
+                                  onClick={() => { setAssigningProject(p.id); setAssignSelectedIds(new Set()); setAssignRole("Consultant"); setAssignRate(0); setAssignBillable(true); setAssignMessage(null); setAssignSearch(""); }}
+                                  disabled={availableConsultants.length === 0}
+                                  style={{
+                                    padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                                    cursor: availableConsultants.length === 0 ? "default" : "pointer",
+                                    display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${t.brand}44`,
+                                    background: t.brandLight, color: t.brand, opacity: availableConsultants.length === 0 ? 0.5 : 1,
+                                    transition: "opacity 0.15s ease",
+                                  }}
+                                >
+                                  <PersonAdd20Regular style={{ fontSize: 16 }} />
+                                  {availableConsultants.length === 0 ? "All consultants assigned" : `Assign Consultants (${availableConsultants.length} available)`}
+                                </button>
+                              ) : (
+                                <div style={{ background: t.cardBg, borderRadius: 10, border: `1px solid ${t.brand}33`, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: t.textPrimary, display: "flex", alignItems: "center", gap: 6 }}>
+                                      <PersonAdd20Regular style={{ color: t.brand }} />
+                                      Assign Consultants to {p.name}
+                                    </div>
+                                    <button onClick={() => { setAssigningProject(null); setAssignMessage(null); }}
+                                      style={{ background: "none", border: "none", cursor: "pointer", color: t.textTertiary, padding: 4 }}>
+                                      <Dismiss16Regular />
+                                    </button>
+                                  </div>
+
+                                  {/* Search */}
+                                  <input
+                                    type="text" placeholder="Search by name or skill…" value={assignSearch}
+                                    onChange={(e) => setAssignSearch(e.target.value)}
+                                    style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${t.divider}`, background: t.surface, color: t.textPrimary, fontSize: 13, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" }}
+                                  />
+
+                                  {/* Consultant list */}
+                                  <div style={{ maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, border: `1px solid ${t.divider}`, borderRadius: 8, padding: 4 }}>
+                                    {filteredAvailable.length === 0 ? (
+                                      <div style={{ padding: 12, textAlign: "center", fontSize: 12, color: t.textTertiary }}>No matching consultants</div>
+                                    ) : filteredAvailable.map((c) => {
+                                      const selected = assignSelectedIds.has(c.id);
+                                      return (
+                                        <div key={c.id}
+                                          onClick={() => setAssignSelectedIds((prev) => { const next = new Set(prev); if (next.has(c.id)) next.delete(c.id); else next.add(c.id); return next; })}
+                                          style={{
+                                            display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 6, cursor: "pointer",
+                                            background: selected ? t.brandLight : "transparent", border: `1px solid ${selected ? t.brand + "44" : "transparent"}`,
+                                            transition: "background 0.12s ease",
+                                          }}
+                                        >
+                                          <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${selected ? t.brand : t.divider}`, display: "flex", alignItems: "center", justifyContent: "center", background: selected ? t.brand : "transparent", flexShrink: 0 }}>
+                                            {selected && <Checkmark16Regular style={{ color: "#fff", fontSize: 12 }} />}
+                                          </div>
+                                          <Avatar name={c.name} src={c.photoUrl} size={28} />
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontSize: 13, fontWeight: 500, color: t.textPrimary }}>{c.name}</div>
+                                            <div style={{ fontSize: 11, color: t.textTertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                              {c.skills?.slice(0, 4).join(", ")}{(c.skills?.length ?? 0) > 4 ? " …" : ""}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Assignment settings */}
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                      <label style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, textTransform: "uppercase" }}>Role</label>
+                                      <input value={assignRole} onChange={(e) => setAssignRole(e.target.value)}
+                                        style={{ padding: "7px 10px", borderRadius: 6, border: `1px solid ${t.divider}`, background: t.surface, color: t.textPrimary, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                      <label style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, textTransform: "uppercase" }}>Rate ($/hr)</label>
+                                      <input type="number" value={assignRate} onChange={(e) => setAssignRate(Number(e.target.value))}
+                                        style={{ padding: "7px 10px", borderRadius: 6, border: `1px solid ${t.divider}`, background: t.surface, color: t.textPrimary, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                      <label style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, textTransform: "uppercase" }}>Billable</label>
+                                      <button onClick={() => setAssignBillable((b) => !b)}
+                                        style={{ padding: "7px 10px", borderRadius: 6, border: `1px solid ${assignBillable ? t.green : t.amber}44`, background: assignBillable ? t.greenBg : t.amberBg, color: assignBillable ? t.green : t.amber, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+                                        {assignBillable ? "✓ Billable" : "Non-Billable"}
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Message */}
+                                  {assignMessage && (
+                                    <div style={{ padding: "8px 12px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: assignMessage.type === "success" ? t.greenBg : t.amberBg, color: assignMessage.type === "success" ? t.green : t.amber, border: `1px solid ${assignMessage.type === "success" ? t.green : t.amber}33` }}>
+                                      {assignMessage.text}
+                                    </div>
+                                  )}
+
+                                  {/* Actions */}
+                                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                                    <button onClick={() => { setAssigningProject(null); setAssignMessage(null); }}
+                                      style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${t.divider}`, background: "transparent", color: t.textSecondary, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+                                      Cancel
+                                    </button>
+                                    <button
+                                      disabled={assignSelectedIds.size === 0 || !assignRole.trim() || assignSaving}
+                                      onClick={async () => {
+                                        setAssignSaving(true); setAssignMessage(null);
+                                        try {
+                                          const ids = [...assignSelectedIds];
+                                          if (window.openai?.callTool) {
+                                            await window.openai.callTool("bulk-assign-consultants", {
+                                              projectId: p.id, consultantIds: ids, role: assignRole.trim(), billable: assignBillable, rate: assignRate,
+                                            });
+                                          } else {
+                                            // Fallback: call the server directly
+                                            const base = (window as any).__SERVER_BASE_URL__ ?? "";
+                                            const res = await fetch(`${base}/assign`, {
+                                              method: "POST", headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ projectId: p.id, consultantIds: ids, role: assignRole.trim(), billable: assignBillable, rate: assignRate }),
+                                            });
+                                            if (!res.ok) throw new Error(await res.text());
+                                          }
+                                          const names = ids.map((id) => data.consultants.find((c) => c.id === id)?.name ?? id);
+                                          setAssignMessage({ type: "success", text: `Assigned ${names.join(", ")} to ${p.name} as ${assignRole.trim()}. Refreshing…` });
+                                          setAssignSelectedIds(new Set());
+                                          // Refresh dashboard data to show the new assignments
+                                          try {
+                                            await window.openai?.callTool?.("show-hr-dashboard", {});
+                                          } catch { /* refresh is best-effort */ }
+                                        } catch (err: any) {
+                                          setAssignMessage({ type: "error", text: `Failed: ${err?.message ?? "Unknown error"}` });
+                                        } finally {
+                                          setAssignSaving(false);
+                                        }
+                                      }}
+                                      style={{
+                                        padding: "8px 16px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 600, fontFamily: "inherit",
+                                        cursor: assignSelectedIds.size === 0 || assignSaving ? "default" : "pointer",
+                                        display: "inline-flex", alignItems: "center", gap: 6,
+                                        background: t.brand, color: "#fff", opacity: assignSelectedIds.size === 0 || assignSaving ? 0.5 : 1,
+                                      }}>
+                                      <Add16Regular />
+                                      {assignSaving ? "Assigning…" : `Assign ${assignSelectedIds.size > 0 ? assignSelectedIds.size : ""} Consultant${assignSelectedIds.size !== 1 ? "s" : ""}`}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
