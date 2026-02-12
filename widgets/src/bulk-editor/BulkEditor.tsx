@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
   Save20Regular,
   ArrowUndo16Regular,
@@ -10,6 +10,8 @@ import {
   Phone20Regular,
   PersonBoard20Regular,
   Certificate20Regular,
+  FullScreenMaximize24Regular,
+  FullScreenMinimize24Regular,
 } from "@fluentui/react-icons";
 import { useOpenAiGlobal } from "../hooks/useOpenAiGlobal";
 import { useThemeColors, type ThemeColors } from "../hooks/useThemeColors";
@@ -114,6 +116,33 @@ export function BulkEditor() {
   const toolOutput = useOpenAiGlobal<BulkEditorData>("toolOutput");
   const data = toolOutput ?? { consultants: [] };
 
+  // Fullscreen toggle — starts inline, switches on button click
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (window.openai?.requestDisplayMode) {
+      const current = window.openai.displayMode;
+      await window.openai.requestDisplayMode({ mode: current === "fullscreen" ? "inline" : "fullscreen" });
+      return;
+    }
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        return;
+      } else {
+        await document.exitFullscreen();
+        return;
+      }
+    } catch { /* not supported */ }
+    setIsFullscreen((prev) => !prev);
+  }, [isFullscreen]);
+
   const [rows, setRows] = useState<EditedRow[]>(() =>
     data.consultants.map((c) => ({ ...c, _dirty: false }))
   );
@@ -205,6 +234,10 @@ export function BulkEditor() {
         background: t.surface,
         minHeight: "100%",
         color: t.textPrimary,
+        ...(isFullscreen ? {
+          position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0,
+          zIndex: 9999, overflowY: "auto" as const,
+        } : {}),
       }}
     >
       {/* ── Header ── */}
@@ -220,6 +253,13 @@ export function BulkEditor() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button
+            style={btnStyle(t, "ghost")}
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? <FullScreenMinimize24Regular /> : <FullScreenMaximize24Regular />}
+          </button>
           <button style={btnStyle(t, "ghost")} disabled={dirtyCount === 0} onClick={revertAll}>
             <ArrowUndo16Regular /> Revert
           </button>

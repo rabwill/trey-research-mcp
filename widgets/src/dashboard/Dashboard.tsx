@@ -171,11 +171,7 @@ export function Dashboard() {
   const data = toolOutput ?? fallback;
   const allAssignments = data.assignments ?? [];
 
-  // Request fullscreen display mode on mount
-  useEffect(() => {
-    window.openai?.requestDisplayMode?.({ mode: "fullscreen" });
-  }, []);
-
+  // Start inline by default — fullscreen is toggled on demand via button
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Track browser fullscreen changes
@@ -485,17 +481,17 @@ export function Dashboard() {
         </div>
         <button
           onClick={toggleFullscreen}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           style={{
-            padding: "8px 16px", borderRadius: 8, border: `1px solid ${t.divider}`,
-            background: isFullscreen ? t.brandLight : t.cardBg, color: t.textPrimary, fontSize: 13, fontWeight: 500,
-            cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
-            transition: "background 0.15s ease",
+            padding: 8, borderRadius: 8, border: `1px solid ${t.divider}`,
+            background: isFullscreen ? t.brandLight : t.cardBg, color: t.textPrimary,
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "background 0.15s ease", lineHeight: 0,
           }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = t.brandLight; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = isFullscreen ? t.brandLight : t.cardBg; }}
         >
-          {isFullscreen ? <FullScreenMinimize24Regular style={{ fontSize: 16 }} /> : <FullScreenMaximize24Regular style={{ fontSize: 16 }} />}
-          {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          {isFullscreen ? <FullScreenMinimize24Regular /> : <FullScreenMaximize24Regular />}
         </button>
       </div>
 
