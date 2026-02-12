@@ -207,27 +207,146 @@ export function Dashboard() {
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null);
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "hours" | "rate">("name");
+  const [showFilters, setShowFilters] = useState(false);
+
+  /* ── Global filter state ── */
+  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
+  const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set());
+  const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
+  const [billableFilter, setBillableFilter] = useState<"all" | "billable" | "non-billable">("all");
+
+  // Auto-apply incoming filters from MCP tool parameters when data changes
+  useEffect(() => {
+    const f = data.filters;
+    if (!f) return;
+
+    // Text search — consultant or project name
+    if (f.consultantName) {
+      setSearchFilter(f.consultantName);
+    } else if (f.projectName && !f.projectIds?.length) {
+      setSearchFilter(f.projectName);
+    } else {
+      setSearchFilter("");
+    }
+
+    // Skill filter
+    if (f.skill) {
+      const q = f.skill.toLowerCase();
+      const matchingSkills = new Set(
+        (data.consultants ?? [])
+          .flatMap((c) => c.skills ?? [])
+          .filter((sk) => sk.toLowerCase().includes(q))
+      );
+      setSelectedSkills(matchingSkills.size > 0 ? matchingSkills : new Set([f.skill]));
+    } else {
+      setSelectedSkills(new Set());
+    }
+
+    // Project filter (by resolved IDs from the server)
+    if (f.projectIds && f.projectIds.length > 0) {
+      setSelectedProjects(new Set(f.projectIds));
+    } else {
+      setSelectedProjects(new Set());
+    }
+
+    // Role filter
+    if (f.role) {
+      const q = f.role.toLowerCase();
+      const matchingRoles = new Set(
+        allAssignments.map((a) => a.role).filter((r) => r.toLowerCase().includes(q))
+      );
+      setSelectedRoles(matchingRoles.size > 0 ? matchingRoles : new Set([f.role]));
+    } else {
+      setSelectedRoles(new Set());
+    }
+
+    // Billable filter
+    if (f.billable === true) setBillableFilter("billable");
+    else if (f.billable === false) setBillableFilter("non-billable");
+    else setBillableFilter("all");
+
+    // Auto-expand filter panel when filters are applied
+    setShowFilters(true);
+  }, [data.filters]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Available filter options ── */
+  const filterOptions = useMemo(() => {
+    const skills = new Set<string>();
+    data.consultants.forEach((c) => c.skills?.forEach((sk) => skills.add(sk)));
+    const projects = new Map<string, string>();
+    data.projects.forEach((p) => projects.set(p.id, p.name));
+    const roles = new Set<string>();
+    allAssignments.forEach((a) => roles.add(a.role));
+    return {
+      skills: [...skills].sort(),
+      projects: [...projects.entries()].sort((a, b) => a[1].localeCompare(b[1])),
+      roles: [...roles].sort(),
+    };
+  }, [data, allAssignments]);
+
+  const activeFilterCount = selectedSkills.size + selectedProjects.size + selectedRoles.size + (billableFilter !== "all" ? 1 : 0);
+
+  const toggleFilter = useCallback((set: Set<string>, value: string, setter: React.Dispatch<React.SetStateAction<Set<string>>>) => {
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value); else next.add(value);
+      return next;
+    });
+  }, []);
+
+  const clearAllFilters = useCallback(() => {
+    setSelectedSkills(new Set());
+    setSelectedProjects(new Set());
+    setSelectedRoles(new Set());
+    setBillableFilter("all");
+    setSearchFilter("");
+  }, []);
+
+  /* ── Filtered data ── */
+  const { filteredAssignments, filteredConsultants } = useMemo(() => {
+    let fa = [...allAssignments];
+    // Billable filter
+    if (billableFilter === "billable") fa = fa.filter((a) => a.billable);
+    else if (billableFilter === "non-billable") fa = fa.filter((a) => !a.billable);
+    // Project filter
+    if (selectedProjects.size > 0) fa = fa.filter((a) => selectedProjects.has(a.projectId));
+    // Role filter
+    if (selectedRoles.size > 0) fa = fa.filter((a) => selectedRoles.has(a.role));
+    // Skill filter: keep assignments whose consultant has at least one selected skill
+    let fc = [...data.consultants];
+    if (selectedSkills.size > 0) {
+      fc = fc.filter((c) => c.skills?.some((sk) => selectedSkills.has(sk)));
+      const consultantIds = new Set(fc.map((c) => c.id));
+      fa = fa.filter((a) => consultantIds.has(a.consultantId));
+    }
+    // If project/role/billable filters are active, also narrow consultants to those with matching assignments
+    if (selectedProjects.size > 0 || selectedRoles.size > 0 || billableFilter !== "all") {
+      const activeConsultantIds = new Set(fa.map((a) => a.consultantId));
+      fc = fc.filter((c) => activeConsultantIds.has(c.id));
+    }
+    return { filteredAssignments: fa, filteredConsultants: fc };
+  }, [allAssignments, data.consultants, selectedSkills, selectedProjects, selectedRoles, billableFilter]);
 
   const cardStyle: React.CSSProperties = { background: t.cardBg, borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: `1px solid ${t.divider}` };
 
   /* ── Computed analytics ── */
   const analytics = useMemo(() => {
-    const billableAssignments = allAssignments.filter((a) => a.billable);
-    const nonBillableAssignments = allAssignments.filter((a) => !a.billable);
-    const totalForecastHrs = allAssignments.reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
-    const totalDeliveredHrs = allAssignments.reduce((sum, a) => sum + (a.delivered ?? []).reduce((x, d) => x + d.hours, 0), 0);
+    const billableAssignments = filteredAssignments.filter((a) => a.billable);
+    const nonBillableAssignments = filteredAssignments.filter((a) => !a.billable);
+    const totalForecastHrs = filteredAssignments.reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
+    const totalDeliveredHrs = filteredAssignments.reduce((sum, a) => sum + (a.delivered ?? []).reduce((x, d) => x + d.hours, 0), 0);
     const billableForecastHrs = billableAssignments.reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
-    const avgRate = allAssignments.length > 0 ? allAssignments.reduce((sum, a) => sum + (a.rate ?? 0), 0) / allAssignments.length : 0;
+    const avgRate = filteredAssignments.length > 0 ? filteredAssignments.reduce((sum, a) => sum + (a.rate ?? 0), 0) / filteredAssignments.length : 0;
     const totalRevenue = billableAssignments.reduce((sum, a) => sum + (a.rate ?? 0) * (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
 
     // Skills frequency
     const skillMap = new Map<string, number>();
-    data.consultants.forEach((c) => c.skills?.forEach((sk) => skillMap.set(sk, (skillMap.get(sk) ?? 0) + 1)));
+    filteredConsultants.forEach((c) => c.skills?.forEach((sk) => skillMap.set(sk, (skillMap.get(sk) ?? 0) + 1)));
     const topSkills = [...skillMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
 
     // Monthly forecast
     const monthMap = new Map<string, number>();
-    allAssignments.forEach((a) => (a.forecast ?? []).forEach((f) => {
+    filteredAssignments.forEach((a) => (a.forecast ?? []).forEach((f) => {
       const key = `${f.year}-${String(f.month).padStart(2, "0")}`;
       monthMap.set(key, (monthMap.get(key) ?? 0) + f.hours);
     }));
@@ -237,8 +356,8 @@ export function Dashboard() {
     }));
 
     // Consultant utilization
-    const consultantUtil = data.consultants.map((c) => {
-      const myAsn = allAssignments.filter((a) => a.consultantId === c.id);
+    const consultantUtil = filteredConsultants.map((c) => {
+      const myAsn = filteredAssignments.filter((a) => a.consultantId === c.id);
       const forecastHrs = myAsn.reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
       const deliveredHrs = myAsn.reduce((sum, a) => sum + (a.delivered ?? []).reduce((x, d) => x + d.hours, 0), 0);
       const revenue = myAsn.filter((a) => a.billable).reduce((sum, a) => sum + (a.rate ?? 0) * (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
@@ -246,8 +365,9 @@ export function Dashboard() {
     });
 
     // Project breakdown
-    const projectBreakdown = data.projects.map((p) => {
-      const projAsn = allAssignments.filter((a) => a.projectId === p.id);
+    const filteredProjectIds = new Set(filteredAssignments.map((a) => a.projectId));
+    const projectBreakdown = data.projects.filter((p) => selectedProjects.size === 0 ? true : selectedProjects.has(p.id)).filter((p) => filteredProjectIds.has(p.id) || selectedProjects.size === 0).map((p) => {
+      const projAsn = filteredAssignments.filter((a) => a.projectId === p.id);
       const forecastHrs = projAsn.reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
       const revenue = projAsn.filter((a) => a.billable).reduce((sum, a) => sum + (a.rate ?? 0) * (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
       return { ...p, teamSize: projAsn.length, forecastHrs, revenue, assignments: projAsn };
@@ -255,7 +375,7 @@ export function Dashboard() {
 
     // Roles distribution
     const roleMap = new Map<string, number>();
-    allAssignments.forEach((a) => roleMap.set(a.role, (roleMap.get(a.role) ?? 0) + 1));
+    filteredAssignments.forEach((a) => roleMap.set(a.role, (roleMap.get(a.role) ?? 0) + 1));
     const roleDistribution = [...roleMap.entries()].sort((a, b) => b[1] - a[1]);
 
     return {
@@ -272,7 +392,7 @@ export function Dashboard() {
       projectBreakdown,
       roleDistribution,
     };
-  }, [data, allAssignments]);
+  }, [data, filteredAssignments, filteredConsultants, selectedProjects]);
 
   /* ── Tab navigation ── */
   const tabs: { key: ViewState["view"]; label: string; icon: React.ReactNode }[] = [
@@ -344,16 +464,135 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* ─── OVERVIEW TAB ───────────────────────────────── */}
+      {/* ─── GLOBAL FILTER BAR ─────────────────────── */}
+      <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+        <div
+          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", cursor: "pointer", userSelect: "none" }}
+          onClick={() => setShowFilters((p) => !p)}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Filter16Regular style={{ color: t.brand }} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: t.textPrimary }}>Filters</span>
+            {activeFilterCount > 0 && (
+              <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: t.brand, color: "#fff" }}>{activeFilterCount}</span>
+            )}
+            {activeFilterCount > 0 && (
+              <span style={{ fontSize: 12, color: t.textTertiary, marginLeft: 4 }}>
+                ({filteredConsultants.length} consultants · {filteredAssignments.length} assignments)
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); clearAllFilters(); }}
+                style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${t.divider}`, background: "transparent", color: t.amber, fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+              >Clear All</button>
+            )}
+            {showFilters ? <ChevronDown16Regular style={{ color: t.textTertiary }} /> : <ChevronRight16Regular style={{ color: t.textTertiary }} />}
+          </div>
+        </div>
+
+        {showFilters && (
+          <div style={{ borderTop: `1px solid ${t.divider}`, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Skills filter */}
+            {filterOptions.skills.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Certificate20Regular style={{ fontSize: 14 }} />Skills
+                  {selectedSkills.size > 0 && <span style={{ fontSize: 10, color: t.brand }}>({selectedSkills.size})</span>}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {filterOptions.skills.map((sk) => {
+                    const active = selectedSkills.has(sk);
+                    return (
+                      <button key={sk} onClick={() => toggleFilter(selectedSkills, sk, setSelectedSkills)}
+                        style={{ padding: "5px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s ease",
+                          border: `1px solid ${active ? t.brand : t.divider}`, background: active ? t.brandLight : "transparent", color: active ? t.brand : t.textSecondary }}>
+                        {sk}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Projects filter */}
+            {filterOptions.projects.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Briefcase20Regular style={{ fontSize: 14 }} />Projects
+                  {selectedProjects.size > 0 && <span style={{ fontSize: 10, color: t.brand }}>({selectedProjects.size})</span>}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {filterOptions.projects.map(([id, name]) => {
+                    const active = selectedProjects.has(id);
+                    return (
+                      <button key={id} onClick={() => toggleFilter(selectedProjects, id, setSelectedProjects)}
+                        style={{ padding: "5px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s ease",
+                          border: `1px solid ${active ? t.purple : t.divider}`, background: active ? t.purpleBg : "transparent", color: active ? t.purple : t.textSecondary }}>
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Roles filter */}
+            {filterOptions.roles.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                  <PersonBoard20Regular style={{ fontSize: 14 }} />Roles
+                  {selectedRoles.size > 0 && <span style={{ fontSize: 10, color: t.brand }}>({selectedRoles.size})</span>}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {filterOptions.roles.map((role) => {
+                    const active = selectedRoles.has(role);
+                    return (
+                      <button key={role} onClick={() => toggleFilter(selectedRoles, role, setSelectedRoles)}
+                        style={{ padding: "5px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s ease",
+                          border: `1px solid ${active ? t.green : t.divider}`, background: active ? t.greenBg : "transparent", color: active ? t.green : t.textSecondary }}>
+                        {role}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Billable filter */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                <MoneyHand20Regular style={{ fontSize: 14 }} />Billing Status
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {(["all", "billable", "non-billable"] as const).map((opt) => {
+                  const active = billableFilter === opt;
+                  return (
+                    <button key={opt} onClick={() => setBillableFilter(opt)}
+                      style={{ padding: "5px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s ease",
+                        border: `1px solid ${active ? t.amber : t.divider}`, background: active ? t.amberBg : "transparent", color: active ? t.amber : t.textSecondary }}>
+                      {opt === "all" ? "All" : opt === "billable" ? "Billable" : "Non-Billable"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── OVERVIEW TAB ───────────────────────────── */}
       {currentTab === "overview" && (
         <>
           {/* KPI Cards */}
           <div className={s.kpiGrid}>
             {[
-              { icon: <People24Regular />, val: data.summary.totalConsultants, label: "Consultants", ibg: t.brandLight, ic: t.brand },
-              { icon: <Briefcase24Regular />, val: data.summary.totalProjects, label: "Projects", ibg: t.purpleBg, ic: t.purple },
+              { icon: <People24Regular />, val: filteredConsultants.length, label: "Consultants", ibg: t.brandLight, ic: t.brand },
+              { icon: <Briefcase24Regular />, val: analytics.projectBreakdown.length, label: "Projects", ibg: t.purpleBg, ic: t.purple },
               { icon: <Clock24Regular />, val: data.summary.totalBillableHours.toLocaleString(), label: "Billable Hours", ibg: t.greenBg, ic: t.green },
-              { icon: <MoneyHand20Regular />, val: data.summary.totalAssignments, label: "Assignments", ibg: t.amberBg, ic: t.amber },
+              { icon: <MoneyHand20Regular />, val: filteredAssignments.length, label: "Assignments", ibg: t.amberBg, ic: t.amber },
               { icon: <ArrowTrendingLines24Regular />, val: `$${analytics.avgRate}`, label: "Avg Rate/Hr", ibg: t.brandLight, ic: t.brand },
               { icon: <DataUsage24Regular />, val: `$${(analytics.totalRevenue / 1000).toFixed(0)}k`, label: "Forecast Revenue", ibg: t.greenBg, ic: t.green },
             ].map(({ icon, val, label, ibg, ic }) => (
@@ -500,7 +739,7 @@ export function Dashboard() {
               })
               .map((c) => {
                 const isExpanded = expandedConsultant === c.id;
-                const myAsn = allAssignments.filter((a) => a.consultantId === c.id);
+                const myAsn = filteredAssignments.filter((a) => a.consultantId === c.id);
                 return (
                   <div key={c.id} style={{ ...cardStyle, padding: 0, overflow: "hidden", transition: "box-shadow 0.15s ease" }}>
                     <div
@@ -682,10 +921,43 @@ export function Dashboard() {
       {/* ─── ASSIGNMENTS TAB ───────────────────────────── */}
       {currentTab === "assignments" && (
         <>
+          {/* Search & Sort for assignments */}
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+              <Filter16Regular style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: t.textTertiary }} />
+              <input
+                type="text"
+                placeholder="Search by consultant, project, or role…"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                style={{
+                  width: "100%", padding: "10px 12px 10px 34px", borderRadius: 8,
+                  border: `1px solid ${t.divider}`, background: t.cardBg, color: t.textPrimary,
+                  fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {(["name", "hours", "rate"] as const).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => setSortBy(key)}
+                  style={{
+                    padding: "8px 14px", borderRadius: 8, border: `1px solid ${sortBy === key ? t.brand : t.divider}`,
+                    background: sortBy === key ? t.brandLight : "transparent", color: sortBy === key ? t.brand : t.textSecondary,
+                    fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  {key === "name" ? "Consultant" : key === "hours" ? "Hours" : "Rate"}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div style={{ ...cardStyle, padding: 16 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 20, marginBottom: 16 }}>
               {[
-                { l: "Total Assignments", v: allAssignments.length, c: t.brand },
+                { l: "Total Assignments", v: filteredAssignments.length, c: t.brand },
                 { l: "Billable", v: analytics.billableAssignments, c: t.green },
                 { l: "Non-Billable", v: analytics.nonBillableAssignments, c: t.amber },
                 { l: "Avg Rate", v: `$${analytics.avgRate}/hr`, c: t.purple },
@@ -711,7 +983,20 @@ export function Dashboard() {
                 <TableHeaderCell>Delivered Hrs</TableHeaderCell>
               </TableRow></TableHeader>
               <TableBody>
-                {allAssignments.map((asn, i) => {
+                {filteredAssignments
+                  .filter((asn) => {
+                    if (!searchFilter) return true;
+                    const q = searchFilter.toLowerCase();
+                    return (asn.consultantName ?? asn.consultantId).toLowerCase().includes(q)
+                      || (asn.projectName ?? asn.projectId).toLowerCase().includes(q)
+                      || asn.role.toLowerCase().includes(q);
+                  })
+                  .sort((a, b) => {
+                    if (sortBy === "hours") return ((b.forecast ?? []).reduce((x, f) => x + f.hours, 0)) - ((a.forecast ?? []).reduce((x, f) => x + f.hours, 0));
+                    if (sortBy === "rate") return (b.rate ?? 0) - (a.rate ?? 0);
+                    return (a.consultantName ?? "").localeCompare(b.consultantName ?? "");
+                  })
+                  .map((asn, i) => {
                   const c = data.consultants.find((x) => x.id === asn.consultantId);
                   const fh = (asn.forecast ?? []).reduce((x, f) => x + f.hours, 0);
                   const dh = (asn.delivered ?? []).reduce((x, d) => x + d.hours, 0);

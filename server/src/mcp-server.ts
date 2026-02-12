@@ -186,9 +186,43 @@ function parseAssignment(a: db.AssignmentEntity) {
 
 const dashboardInputSchema = {
   type: "object" as const,
-  properties: {},
+  properties: {
+    consultantName: {
+      type: "string" as const,
+      description:
+        "Optional consultant name to pre-filter the dashboard (partial match, case-insensitive).",
+    },
+    projectName: {
+      type: "string" as const,
+      description:
+        "Optional project name to pre-filter the dashboard (partial match, case-insensitive).",
+    },
+    skill: {
+      type: "string" as const,
+      description:
+        "Optional skill to pre-filter the dashboard — shows only consultants with this skill and their assignments.",
+    },
+    role: {
+      type: "string" as const,
+      description:
+        "Optional role to pre-filter assignments (e.g. 'Developer', 'Architect').",
+    },
+    billable: {
+      type: "boolean" as const,
+      description:
+        "Optional — set true to show only billable assignments, false for non-billable.",
+    },
+  },
   additionalProperties: false,
 };
+
+const dashboardParser = z.object({
+  consultantName: z.string().optional(),
+  projectName: z.string().optional(),
+  skill: z.string().optional(),
+  role: z.string().optional(),
+  billable: z.boolean().optional(),
+});
 
 const profileInputSchema = {
   type: "object" as const,
@@ -472,7 +506,7 @@ export function createHRServer(): Server {
       name: "show-hr-dashboard",
       title: "Show HR Dashboard",
       description:
-        "Display the HR consultant dashboard with KPIs: consultant count, project count, total billable hours, and utilization data.",
+        "Display the HR consultant dashboard with KPIs. Accepts optional filters: consultantName, projectName, skill, role, billable — the dashboard auto-applies them so users see a focused view.",
       inputSchema: dashboardInputSchema,
       _meta: descriptorMeta(DASHBOARD_WIDGET),
       annotations: {
@@ -610,6 +644,7 @@ export function createHRServer(): Server {
       switch (name) {
         // ──── Dashboard ────
         case "show-hr-dashboard": {
+          const filters = dashboardParser.parse(args);
           const [consultants, projects, assignments] = await Promise.all([
             db.getAllConsultants(),
             db.getAllProjects(),
@@ -621,6 +656,37 @@ export function createHRServer(): Server {
             const forecast: Array<{ hours: number }> = JSON.parse(a.forecast || "[]");
             return sum + forecast.reduce((s, f) => s + f.hours, 0);
           }, 0);
+
+          // Build active filter hints to pass to the widget
+          const activeFilters: Record<string, unknown> = {};
+          const filterDescParts: string[] = [];
+
+          if (filters.consultantName) {
+            activeFilters.consultantName = filters.consultantName;
+            filterDescParts.push(`consultant: "${filters.consultantName}"`);
+          }
+          if (filters.projectName) {
+            // Resolve matching project IDs
+            const q = filters.projectName.toLowerCase();
+            const matchedIds = projects
+              .filter((p) => p.name.toLowerCase().includes(q))
+              .map((p) => p.rowKey);
+            activeFilters.projectIds = matchedIds;
+            activeFilters.projectName = filters.projectName;
+            filterDescParts.push(`project: "${filters.projectName}"`);
+          }
+          if (filters.skill) {
+            activeFilters.skill = filters.skill;
+            filterDescParts.push(`skill: "${filters.skill}"`);
+          }
+          if (filters.role) {
+            activeFilters.role = filters.role;
+            filterDescParts.push(`role: "${filters.role}"`);
+          }
+          if (filters.billable !== undefined) {
+            activeFilters.billable = filters.billable;
+            filterDescParts.push(filters.billable ? "billable only" : "non-billable only");
+          }
 
           const dashboardData = {
             consultants: consultants.map(parseConsultant),
@@ -642,13 +708,18 @@ export function createHRServer(): Server {
               totalAssignments: assignments.length,
               totalBillableHours,
             },
+            ...(Object.keys(activeFilters).length > 0 ? { filters: activeFilters } : {}),
           };
+
+          const filterDesc = filterDescParts.length > 0
+            ? ` (filtered by ${filterDescParts.join(", ")})`
+            : "";
 
           return {
             content: [
               {
                 type: "text" as const,
-                text: `HR Dashboard: ${consultants.length} consultants, ${projects.length} projects, ${totalBillableHours} billable hours forecasted.`,
+                text: `HR Dashboard: ${consultants.length} consultants, ${projects.length} projects, ${totalBillableHours} billable hours forecasted.${filterDesc}`,
               },
             ],
             structuredContent: dashboardData,
