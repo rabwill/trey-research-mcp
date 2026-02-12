@@ -26,32 +26,52 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as db from "./db.js";
+import { getPublicServerUrl } from "./index.js";
 
 // ─── Widget HTML loader ────────────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = path.resolve(__dirname, "..", "..", "assets");
 const MIME_TYPE = "text/html+skybridge";
 
+/**
+ * Read a widget's built HTML and inject the public server URL so the
+ * widget can call back to this server even when it is loaded through a
+ * tunnel or proxy (avoids private-network / mixed-content blocks).
+ *
+ * Injects a small `<script>` right after `<head>` that sets
+ * `window.__SERVER_BASE_URL__`.
+ */
 function readWidgetHtml(componentName: string): string {
   if (!fs.existsSync(ASSETS_DIR)) {
     throw new Error(
       `Widget assets not found at ${ASSETS_DIR}. Run "npm run build:widgets" first.`
     );
   }
+  let html: string | undefined;
   const directPath = path.join(ASSETS_DIR, `${componentName}.html`);
   if (fs.existsSync(directPath)) {
-    return fs.readFileSync(directPath, "utf8");
+    html = fs.readFileSync(directPath, "utf8");
+  } else {
+    // Try hashed fallback
+    const candidates = fs
+      .readdirSync(ASSETS_DIR)
+      .filter((f) => f.startsWith(`${componentName}-`) && f.endsWith(".html"))
+      .sort();
+    const fallback = candidates[candidates.length - 1];
+    if (fallback) {
+      html = fs.readFileSync(path.join(ASSETS_DIR, fallback), "utf8");
+    }
   }
-  // Try hashed fallback
-  const candidates = fs
-    .readdirSync(ASSETS_DIR)
-    .filter((f) => f.startsWith(`${componentName}-`) && f.endsWith(".html"))
-    .sort();
-  const fallback = candidates[candidates.length - 1];
-  if (fallback) {
-    return fs.readFileSync(path.join(ASSETS_DIR, fallback), "utf8");
+  if (!html) {
+    throw new Error(`Widget HTML for "${componentName}" not found in ${ASSETS_DIR}.`);
   }
-  throw new Error(`Widget HTML for "${componentName}" not found in ${ASSETS_DIR}.`);
+
+  // Inject public server URL into the widget
+  const serverUrl = getPublicServerUrl();
+  const injection = `<script>window.__SERVER_BASE_URL__=${JSON.stringify(serverUrl)};</script>`;
+  html = html.replace("<head>", `<head>${injection}`);
+
+  return html;
 }
 
 // ─── Widget definitions ────────────────────────────────────────────

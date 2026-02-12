@@ -4,7 +4,7 @@
 		{
 			"label": "Start MCP Server",
 			"type": "shell",
-			"command": "cd /Users/rabiawilliams/Documents/trey-02-mcp && npx tsx server/src/index.ts",
+			"command": "cd /Users/rabiawilliams/Documents/trey-02-mcp && node --env-file=.env --import tsx server/src/index.ts",
 			"isBackground": true,
 			"problemMatcher": []
 		}
