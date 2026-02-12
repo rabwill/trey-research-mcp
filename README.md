@@ -1,141 +1,63 @@
-# HR Consultant MCP Server + Widgets
+# HR Consultant MCP Server
 
-An MCP (Model Context Protocol) server for HR consultant management with rich Fluent UI React widgets that render inline in ChatGPT, Claude, and other MCP-compatible clients.
-
-## Architecture
-
-```
-trey-02-mcp/
-├── db/                     # Mock data (JSON)
-├── server/                 # MCP server (Node + Express)
-│   └── src/
-│       ├── db.ts           # Azurite Table Storage layer
-│       ├── seed.ts         # Seeds Azurite from db/*.json
-│       ├── mcp-server.ts   # MCP tools & resource definitions
-│       └── index.ts        # Express + Streamable HTTP transport
-├── widgets/                # Fluent UI React widgets
-│   ├── build.mts           # Custom Vite build (single-file HTML)
-│   └── src/
-│       ├── dashboard/      # HR Dashboard widget
-│       ├── bulk-editor/    # Bulk consultant editor
-│       └── consultant-profile/  # Individual profile view
-└── assets/                 # Built widget HTML files (generated)
-```
+MCP server with rich Fluent UI React widgets for managing HR consultants, projects, and assignments. Renders interactive UI inline in ChatGPT via the OpenAI widget protocol.
 
 ## Prerequisites
 
-- **Node.js** ≥ 18
-- **npm** ≥ 9
-- **Azurite** (installed as a dev dependency)
+| Requirement | Version |
+|---|---|
+| Node.js | ≥ 18 |
+| npm | ≥ 9 |
+
+Azurite is included as a dev dependency — no separate install needed.
 
 ## Quick Start
 
-### 1. Install dependencies
-
 ```bash
-npm install
-cd server && npm install && cd ..
-cd widgets && npm install && cd ..
+npm run install:all        # Install all dependencies
+npm run start:azurite      # Start local Azure Table Storage (port 10002)
+npm run seed               # Seed consultants, projects, assignments
+npm run build:widgets      # Build widget HTML into assets/
+npm run start:server       # Start MCP server on http://localhost:8000
 ```
 
-### 2. Start Azurite (local Azure Table Storage)
+## Connect to ChatGPT
 
-```bash
-npm run start:azurite
-```
+**Settings → MCP → Add connector**
+- URL: `http://localhost:8000/mcp`
+- Transport: Streamable HTTP
 
-This starts the Azurite table service on `http://127.0.0.1:10002`.
+## MCP Tools
 
-### 3. Seed the database
+| Tool | Type | Description |
+|---|---|---|
+| `show-hr-dashboard` | Widget | Dashboard with KPIs, consultant cards, project list |
+| `show-consultant-profile` | Widget | Detailed consultant profile with assignments |
+| `show-project-details` | Widget | Project detail with team table, assign/remove UI |
+| `search-consultants` | Widget | Filter consultants by skill or name |
+| `show-bulk-editor` | Widget | Inline editor for bulk-editing consultant records |
+| `update-consultant` | Data | Update a single consultant's fields |
+| `bulk-update-consultants` | Data | Batch update multiple consultants |
+| `assign-consultant-to-project` | Data | Assign a consultant to a project with role/rate |
+| `bulk-assign-consultants` | Data | Assign multiple consultants to a project at once |
+| `remove-assignment` | Data | Remove a consultant from a project |
 
-```bash
-npm run seed
-```
+## Sample Prompts
 
-Loads consultants, projects, and assignments from `db/` into Azurite.
-
-### 4. Build the widgets
-
-```bash
-npm run build:widgets
-```
-
-Produces self-contained HTML files in `assets/` (dashboard.html, bulk-editor.html, consultant-profile.html).
-
-### 5. Start the MCP server
-
-```bash
-npm run start:server
-```
-
-The server starts on `http://localhost:8000` with:
-- `POST /mcp` — Streamable HTTP MCP endpoint
-- `GET /health` — Health check
-
-## Connecting to ChatGPT
-
-In ChatGPT settings, add a new MCP connector:
-
-- **URL**: `http://localhost:8000/mcp`
-- **Transport**: Streamable HTTP
-
-## Available MCP Tools
-
-| Tool | Description |
+| Prompt | What it does |
 |---|---|
-| `show-hr-dashboard` | Displays the HR overview dashboard with KPIs, consultant list, and project summary |
-| `show-consultant-profile` | Shows a detailed profile for a specific consultant with assignments |
-| `search-consultants` | Searches consultants by skill or name and displays results in the dashboard |
-| `show-bulk-editor` | Opens an inline editor for bulk-editing consultant records |
-| `update-consultant` | Updates a single consultant's fields |
-| `bulk-update-consultants` | Batch updates multiple consultants at once |
-| `show-project-details` | Shows project details with assigned consultants |
-
-## Widget Features
-
-### Dashboard
-- KPI cards (consultant count, project count, billable hours, assignments)
-- Consultant table with avatars, skills badges, role badges
-- Project summary table
-- Click-through to profile and project details
-
-### Bulk Editor
-- Inline editable table for all consultants
-- Edit name, email, phone, skills (add/remove), roles
-- Row-level dirty tracking with visual highlight
-- Save All / Revert with confirmation messages
-
-### Consultant Profile
-- Photo, contact info, location
-- Quick stats (active projects, forecast hours, delivered hours)
-- Skills, certifications, and roles with badges
-- Assignments table with billable status and rate
-
-## Tech Stack
-
-- **Server**: Node.js, Express, `@modelcontextprotocol/sdk` (Streamable HTTP)
-- **Database**: Azurite (Azure Table Storage emulator) via `@azure/data-tables`
-- **Widgets**: React 18, Fluent UI React v9, Vite + vite-plugin-singlefile
-- **Protocol**: MCP with OpenAI widget extensions (`text/html+skybridge`, `_meta`)
+| *Show me the HR dashboard* | Opens the full dashboard widget |
+| *Show profile for consultant 1* | Opens a consultant profile card |
+| *Search consultants with Azure skills* | Filters by skill |
+| *Show project details for project 1* | Opens project detail with team |
+| *Assign consultant 3 to project 1 as Architect at $150/hr* | Creates an assignment |
+| *Remove consultant 2 from project 1* | Removes an assignment |
+| *Open the bulk editor* | Opens inline editing for all consultants |
+| *Update consultant 1 — add skill "Kubernetes"* | Updates a single field |
 
 ## Development
 
-### Rebuild widgets in watch mode
-
-Not currently supported as a single command. Build widgets manually after changes:
-
 ```bash
-cd widgets && npx tsx build.mts
+npm run dev:server         # Server with hot-reload (tsx --watch)
+cd widgets && npx tsx build.mts   # Rebuild widgets after changes
 ```
-
-### Server development
-
-```bash
-cd server && npx tsx --watch src/index.ts
-```
-
-## Data Model
-
-- **Consultants**: id, name, email, phone, photoUrl, location, skills[], certifications[], roles[]
-- **Projects**: id, name, description, clientName, clientContact, clientEmail, location
-- **Assignments**: projectId, consultantId, role, billable, rate, forecast[], delivered[]
