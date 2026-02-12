@@ -1,132 +1,223 @@
-# SKILL: Building MCP Servers with Rich Widgets
+# SKILL: Cookie-Cutter Guide — MCP Server with Rich Widgets
 
-Step-by-step guide to build an MCP server (any domain) that renders interactive Fluent UI React widgets inline in ChatGPT, using exactly the same architecture and patterns as this project.
+Use this guide to build a new MCP server (any domain) with interactive Fluent UI React widgets that render inline in ChatGPT and Microsoft 365 Copilot. Follow each step in order — every pattern is taken directly from this project.
 
 ---
 
-## Architecture Overview
+## 1. Project Structure
+
+Create this folder layout. Copilot prompt: *"Scaffold an MCP widget project with this structure."*
 
 ```
-your-mcp-project/
-├── db/                     # Seed data (JSON files)
-├── server/                 # MCP server
+my-mcp-project/
+├── db/                        # Seed data — one JSON file per entity
+│   ├── EntityA.json
+│   └── EntityB.json
+├── server/                    # MCP server (Node.js + Express)
+│   ├── package.json
+│   ├── tsconfig.json
 │   └── src/
-│       ├── db.ts           # Database layer (Azurite / Azure Table Storage)
-│       ├── seed.ts         # Seeds DB from db/*.json
-│       ├── mcp-server.ts   # MCP server factory (tools, resources, handlers)
-│       └── index.ts        # Express + Streamable HTTP transport
-├── widgets/                # React widget source
-│   ├── build.mts           # Vite build script (produces single-file HTML)
+│       ├── db.ts              # Azurite table clients + CRUD helpers
+│       ├── seed.ts            # Reads db/*.json → inserts into Azurite
+│       ├── mcp-server.ts      # Tool definitions + handlers + widget protocol
+│       └── index.ts           # Express app + Streamable HTTP transport
+├── widgets/                   # React widget source
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── build.mts              # Vite build → single-file HTML per widget
 │   └── src/
-│       ├── <widget-name>/  # One folder per widget
-│       └── hooks/          # Shared hooks (useOpenAiGlobal, useThemeColors)
-├── assets/                 # Built widget HTML (generated, gitignored)
-└── package.json            # Root orchestration scripts
+│       ├── types.ts           # Shared TypeScript interfaces
+│       ├── hooks/
+│       │   ├── useOpenAiGlobal.ts   # Reads window.openai.* props
+│       │   └── useThemeColors.ts    # Light/dark theme palette
+│       └── my-widget/
+│           ├── index.html     # Entry HTML (with CSS reset)
+│           ├── main.tsx       # React mount point
+│           └── MyWidget.tsx   # Widget component
+├── assets/                    # Built widget HTML (gitignored, generated)
+├── .env                       # Environment variables
+└── package.json               # Root scripts that orchestrate everything
 ```
 
 ---
 
-## Step 1: Server Setup
+## 2. Create the `db/` Folder — Seed Data
 
-### Transport: Streamable HTTP (stateless)
+Each JSON file represents one entity type. The format is `{ "rows": [...] }` where each row has an `id` field.
 
-Use Express + `@modelcontextprotocol/sdk`. Each POST creates a fresh server + transport.
+### Pattern
 
-```typescript
-import express from "express";
-import cors from "cors";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createMyServer } from "./mcp-server.js";
-
-const app = express();
-app.use(cors({ origin: "*", methods: ["GET", "POST", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Accept", "Mcp-Session-Id", "mcp-session-id",
-    "Last-Event-ID", "Mcp-Protocol-Version", "mcp-protocol-version"],
-  exposedHeaders: ["Mcp-Session-Id"], credentials: false }));
-app.use(express.json());
-
-app.post("/mcp", async (req, res) => {
-  const server = createMyServer();
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,   // stateless — no session tracking
-    enableJsonResponse: true,        // CRITICAL: avoids SSE 30s timeout in ChatGPT
-  });
-  await server.connect(transport);
-  await transport.handleRequest(req, res, req.body);
-});
-
-// Delegate GET/DELETE to transport (ChatGPT sends these)
-app.get("/mcp", async (req, res) => { /* create transport, handleRequest */ });
-app.delete("/mcp", async (req, res) => { /* create transport, handleRequest */ });
-
-app.listen(8000);
-```
-
-**Critical settings:**
-| Setting | Value | Why |
-|---|---|---|
-| `sessionIdGenerator` | `undefined` | Stateless mode — ChatGPT doesn't persist session IDs |
-| `enableJsonResponse` | `true` | Returns JSON instead of SSE — avoids ChatGPT 30s timeout |
-| CORS `origin` | `"*"` | ChatGPT connector needs open CORS |
-| GET/DELETE `/mcp` | Delegate to transport | ChatGPT sends GET/DELETE probes; returning 405 breaks the connector |
-
----
-
-## Step 2: Database Layer (Azurite)
-
-Use `@azure/data-tables` with Azurite for local development.
-
-```typescript
-import { TableClient, TableServiceClient } from "@azure/data-tables";
-
-const CONN_STRING = "UseDevelopmentStorage=true";
-const serviceClient = TableServiceClient.fromConnectionString(CONN_STRING, {
-  allowInsecureConnection: true,  // REQUIRED for Azurite HTTP
-});
-
-const myTable = TableClient.fromConnectionString(CONN_STRING, "MyTable", {
-  allowInsecureConnection: true,
-});
-
-export async function ensureTables() {
-  await serviceClient.createTable("MyTable").catch(() => {});
+```json
+{
+  "rows": [
+    {
+      "id": "1",
+      "name": "Example Item",
+      "email": "example@company.com",
+      "tags": ["tag1", "tag2"],
+      "details": {
+        "nested": "object fields are fine"
+      }
+    }
+  ]
 }
 ```
 
-**Key points:**
-- Always pass `{ allowInsecureConnection: true }` — Azurite runs over HTTP, and `@azure/data-tables` rejects it otherwise
-- Use `partitionKey` + `rowKey` as composite keys
-- Store arrays/objects as JSON strings, parse on read
+### Rules
+
+| Rule | Why |
+|---|---|
+| Every row needs a unique `id` string | Used as `rowKey` in Azure Table Storage |
+| Arrays and objects are stored as JSON strings | Azure Table Storage only supports flat properties |
+| Keep IDs short (`"1"`, `"2"`, etc.) | Easy to reference in chat prompts |
+| Use descriptive field names | The LLM reads tool descriptions to map user intent |
+
+### Copilot Prompt to Generate Seed Data
+
+> *"Create a `db/` folder with JSON seed files for my [domain] project. I have these entities: [list them]. Each file should use the format `{ "rows": [...] }` with an `id` field per row. Include 3-5 sample records per entity with realistic data. Store arrays and nested objects as inline JSON (they'll be stringified during seeding)."*
+
+### This Project's Example
+
+```
+db/
+├── Consultant.json    # { rows: [{ id, name, email, phone, skills:[], roles:[], location:{} }] }
+├── Project.json       # { rows: [{ id, name, description, clientName, location:{} }] }
+└── Assignment.json    # { rows: [{ id, projectId, consultantId, role, billable, rate, forecast:[] }] }
+```
 
 ---
 
-## Step 3: MCP Server Factory
+## 3. Database Layer (`server/src/db.ts`)
 
-Return a `Server` instance from a factory function. Register tool definitions AND handlers.
+Uses `@azure/data-tables` with Azurite for local development.
 
-### Widget Protocol — The Key Mechanism
-
-ChatGPT renders widgets through this protocol:
-
-1. **Resources** — Register each widget as a resource with `mimeType: "text/html+skybridge"`
-2. **`_meta` on tool definitions** — Points to the widget's resource URI via `openai/outputTemplate`
-3. **`structuredContent` on tool responses** — The data payload the widget reads
-4. **`_meta` on tool responses** — Same `openai/outputTemplate` URI
+### Pattern
 
 ```typescript
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { TableClient } from "@azure/data-tables";
 
-// Widget definition
-const DASHBOARD_WIDGET = {
-  id: "my-dashboard",
-  title: "My Dashboard",
-  templateUri: "ui://widget/my-dashboard.html",
-  invoking: "Loading dashboard…",
-  invoked: "Dashboard ready",
-  html: fs.readFileSync("assets/my-dashboard.html", "utf8"),
+const CONNECTION_STRING =
+  process.env.AZURE_STORAGE_CONNECTION_STRING ??
+  "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;";
+
+const opts = { allowInsecureConnection: true };  // REQUIRED for Azurite HTTP
+
+export const myTable = TableClient.fromConnectionString(CONNECTION_STRING, "MyEntities", opts);
+
+export async function ensureTables() {
+  try { await myTable.createTable(); } catch { /* already exists */ }
+}
+
+// Entity interface — arrays/objects stored as JSON strings
+export interface MyEntity {
+  partitionKey: string;
+  rowKey: string;
+  name: string;
+  tags: string;       // JSON-stringified array
+  details: string;    // JSON-stringified object
+}
+
+// CRUD helpers
+export async function getAll(): Promise<MyEntity[]> {
+  const results: MyEntity[] = [];
+  for await (const entity of myTable.listEntities<MyEntity>()) {
+    results.push(entity);
+  }
+  return results;
+}
+
+export async function getById(id: string): Promise<MyEntity | null> {
+  try {
+    return await myTable.getEntity<MyEntity>("mypartition", id);
+  } catch { return null; }
+}
+
+export async function update(id: string, updates: Record<string, unknown>): Promise<MyEntity | null> {
+  const existing = await getById(id);
+  if (!existing) return null;
+  const merged: Record<string, unknown> = { ...existing };
+  for (const [key, value] of Object.entries(updates)) {
+    // Stringify arrays/objects for Table Storage
+    merged[key] = Array.isArray(value) || typeof value === "object"
+      ? JSON.stringify(value) : value;
+  }
+  await myTable.updateEntity(
+    { partitionKey: "mypartition", rowKey: id, ...merged } as any, "Replace"
+  );
+  return getById(id);
+}
+```
+
+### Critical Rules
+
+- **Always** pass `{ allowInsecureConnection: true }` — Azurite runs HTTP, SDK rejects it otherwise
+- Use `partitionKey` + `rowKey` as composite keys
+- Store arrays/objects as JSON strings, parse on read in `mcp-server.ts`
+
+---
+
+## 4. Seed Script (`server/src/seed.ts`)
+
+Reads each `db/*.json` file and upserts rows into Azurite.
+
+### Pattern
+
+```typescript
+import fs from "node:fs";
+import path from "node:path";
+import { ensureTables, myTable } from "./db.js";
+
+const DB_DIR = path.resolve(__dirname, "..", "..", "db");
+
+function loadJson<T>(file: string): T[] {
+  const raw = fs.readFileSync(path.join(DB_DIR, file), "utf-8");
+  return JSON.parse(raw).rows;
+}
+
+async function seed() {
+  await ensureTables();
+
+  const items = loadJson<any>("MyEntity.json");
+  for (const item of items) {
+    await myTable.upsertEntity({
+      partitionKey: "mypartition",
+      rowKey: item.id,
+      name: item.name,
+      tags: JSON.stringify(item.tags),         // Stringify arrays
+      details: JSON.stringify(item.details),   // Stringify objects
+    }, "Replace");
+    console.log(`  ✓ ${item.name}`);
+  }
+}
+
+seed().catch(console.error);
+```
+
+---
+
+## 5. MCP Server (`server/src/mcp-server.ts`)
+
+### Widget Protocol — How It Works
+
+ChatGPT/Copilot renders widgets through these four pieces:
+
+1. **Resources** — Widget HTML registered with `mimeType: "text/html+skybridge"`
+2. **`_meta` on tool definitions** — `openai/outputTemplate` points to the widget resource URI
+3. **`structuredContent` on tool responses** — The JSON data the widget reads
+4. **`_meta` on tool responses** — Same `openai/outputTemplate` URI
+
+### Widget Definition
+
+```typescript
+const MY_WIDGET = {
+  id: "my-widget",
+  title: "My Widget",
+  templateUri: "ui://widget/my-widget.html",
+  invoking: "Loading widget…",
+  invoked: "Widget ready",
+  html: readWidgetHtml("my-widget"),  // Reads from assets/ folder
 };
 
-// Metadata for tool DESCRIPTORS (list_tools response)
 function descriptorMeta(widget) {
   return {
     "openai/outputTemplate": widget.templateUri,
@@ -135,241 +226,181 @@ function descriptorMeta(widget) {
     "openai/widgetAccessible": true,
   };
 }
+```
 
-// Same metadata for tool RESPONSES (call_tool response)
-function invocationMeta(widget) {
-  return { ...descriptorMeta(widget) };
+### Tool Types
+
+| Type | Has `_meta`? | Has `structuredContent`? | Purpose |
+|---|---|---|---|
+| **Widget tool** | Yes | Yes | Renders interactive UI |
+| **Data tool** | No | No | CRUD — returns text confirmation |
+
+### Widget Tool Example
+
+```typescript
+// Tool definition (in list_tools)
+{
+  name: "show-my-widget",
+  title: "Show My Widget",
+  description: "Displays the widget. Optional filter: name.",
+  inputSchema: { type: "object", properties: { name: { type: "string" } } },
+  _meta: descriptorMeta(MY_WIDGET),
+  annotations: { readOnlyHint: true },
 }
 
-export function createMyServer() {
-  const server = new Server(
-    { name: "my-server", version: "1.0.0" },
-    { capabilities: { tools: {}, resources: {} } }
-  );
-
-  // ── List Resources ──
-  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: [DASHBOARD_WIDGET].map(w => ({
-      name: w.title,
-      uri: w.templateUri,
-      mimeType: "text/html+skybridge",
-    })),
-  }));
-
-  // ── Read Resource (serves the HTML) ──
-  server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
-    const widget = [DASHBOARD_WIDGET].find(w => w.templateUri === req.params.uri);
-    return {
-      contents: [{
-        uri: req.params.uri,
-        mimeType: "text/html+skybridge",
-        text: widget.html,
-      }],
-    };
-  });
-
-  // ── List Tools ──
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [{
-      name: "show-dashboard",
-      title: "Show Dashboard",
-      description: "Display the dashboard with data...",
-      inputSchema: { type: "object", properties: {}, required: [] },
-      _meta: descriptorMeta(DASHBOARD_WIDGET),  // ← Links tool to widget
-      annotations: { readOnlyHint: true },
-    }],
-  }));
-
-  // ── Call Tool ──
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const data = await fetchMyData();
-    return {
-      content: [{ type: "text", text: "Dashboard loaded." }],
-      structuredContent: data,                    // ← Widget reads this
-      _meta: invocationMeta(DASHBOARD_WIDGET),    // ← Widget rendering trigger
-    };
-  });
-
-  return server;
+// Tool handler (in call_tool)
+case "show-my-widget": {
+  const data = await db.getAll();
+  return {
+    content: [{ type: "text", text: `Loaded ${data.length} items.` }],
+    structuredContent: { items: data.map(parseEntity) },  // Widget payload
+    _meta: invocationMeta(MY_WIDGET),                      // Widget trigger
+  };
 }
 ```
 
-### Tool Categories
+### Data Tool Example
 
-| Category | Has `_meta`? | Has `structuredContent`? | Purpose |
-|---|---|---|---|
-| **Widget tools** | Yes | Yes | Renders interactive UI |
-| **Data tools** | No | No | CRUD — returns text confirmation |
+```typescript
+// No _meta, no structuredContent — just text response
+case "update-my-entity": {
+  const updated = await db.update(id, updates);
+  return {
+    content: [{ type: "text", text: `Updated ${updated.name}.` }],
+  };
+}
+```
 
 ---
 
-## Step 4: Widget Development
+## 6. Express Transport (`server/src/index.ts`)
+
+Stateless Streamable HTTP — each request gets a fresh server + transport.
+
+### Critical Settings
+
+| Setting | Value | Why |
+|---|---|---|
+| `sessionIdGenerator` | `undefined` | Stateless — ChatGPT doesn't persist sessions |
+| `enableJsonResponse` | `true` | Returns JSON instead of SSE — avoids 30s timeout |
+| CORS `origin` | Allow `*` or specific origins | ChatGPT/Copilot sandbox sends `null` origin |
+| Handle GET + DELETE `/mcp` | Delegate to transport | ChatGPT sends probe requests; 405 breaks the connector |
+
+---
+
+## 7. Widget Development
 
 ### Stack
 
 | Package | Purpose |
 |---|---|
 | `react` + `react-dom` | UI framework |
-| `@fluentui/react-components` | Fluent UI v9 component library |
-| `@fluentui/react-icons` | Icon set |
-| `vite` + `vite-plugin-singlefile` | Builds to a single self-contained HTML file |
+| `@fluentui/react-components` | Fluent UI v9 |
+| `@fluentui/react-icons` | Icons |
+| `vite` + `vite-plugin-singlefile` | Single-file HTML build |
+
+### `index.html` — CSS Reset for Copilot
+
+Every widget needs this to prevent double scrollbars:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Widget</title>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; }
+    #root { height: 100%; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./main.tsx"></script>
+</body>
+</html>
+```
 
 ### Reading Data — `window.openai.toolOutput`
 
-The widget reads the `structuredContent` from the tool response:
-
 ```typescript
-// hooks/useOpenAiGlobal.ts
-import { useState, useEffect } from "react";
-
-declare global {
-  interface Window {
-    openai?: {
-      toolOutput?: unknown;
-      theme?: string;
-      callTool?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
-      sendFollowUpMessage?: (msg: string) => void;
-    };
-  }
-}
-
-export function useOpenAiGlobal<T>(key: "toolOutput" | "theme"): T | undefined {
-  const [value, setValue] = useState<T | undefined>(
-    () => window.openai?.[key] as T | undefined
-  );
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const v = window.openai?.[key] as T | undefined;
-      if (v !== undefined) { setValue(v); clearInterval(interval); }
-    }, 200);
-    return () => clearInterval(interval);
-  }, [key]);
-  return value;
-}
+const toolOutput = useOpenAiGlobal<MyData>("toolOutput");
+const data = toolOutput ?? fallback;
 ```
+
+The `structuredContent` from the tool response is available at `window.openai.toolOutput`.
 
 ### Calling Tools from Widgets
 
-Widgets can call MCP tools directly:
-
 ```typescript
-await window.openai?.callTool?.("update-my-entity", {
-  id: "123",
-  name: "New Name",
-});
+await window.openai?.callTool?.("update-my-entity", { id: "1", name: "New Name" });
+// Then update local state optimistically — don't use sendFollowUpMessage to refresh
+setItems(prev => prev.map(i => i.id === "1" ? { ...i, name: "New Name" } : i));
 ```
-
-**Important:** `callTool` calls the MCP server. Use it for data mutations.  
-**Important:** `sendFollowUpMessage` sends a chat message that creates a *new* widget. Do NOT use it for refreshing current widget data. Use optimistic local state updates instead.
 
 ### Theme Support
 
 ```typescript
-// hooks/useThemeColors.ts
-export function useThemeColors() {
-  const theme = window.openai?.theme; // "light" | "dark"
-  return theme === "dark" ? {
-    surface: "#1e1e1e", cardBg: "#2d2d2d", textPrimary: "#e0e0e0",
-    brand: "#4dabf7", divider: "#404040", // ... etc
-  } : {
-    surface: "#f5f5f5", cardBg: "#ffffff", textPrimary: "#1a1a1a",
-    brand: "#0a66c2", divider: "#e5e5e5", // ... etc
-  };
-}
+const theme = window.openai?.theme; // "light" | "dark"
+// Use inline styles for colors, makeStyles for layout only
 ```
 
-**Key rule:** Fluent UI v9 `makeStyles` (Griffel) is static — it cannot accept runtime theme values. Use `makeStyles` for layout/structure, and inline styles for all colors via the theme object.
+### DisplayMode Toggle
 
-### Griffel Gotcha
-
-`makeStyles` does NOT support shorthand `borderColor` inside `:hover` pseudo-selectors. Use longhand:
+Widgets start inline. Add a fullscreen toggle button:
 
 ```typescript
-// ❌ FAILS
-":hover": { borderColor: "#0a66c2" }
+const [isFullscreen, setIsFullscreen] = useState(false);
 
-// ✅ WORKS
-":hover": {
-  borderTopColor: "#0a66c2",
-  borderRightColor: "#0a66c2",
-  borderBottomColor: "#0a66c2",
-  borderLeftColor: "#0a66c2",
-}
+const toggleFullscreen = useCallback(async () => {
+  if (window.openai?.requestDisplayMode) {
+    const current = window.openai.displayMode;
+    await window.openai.requestDisplayMode({
+      mode: current === "fullscreen" ? "inline" : "fullscreen"
+    });
+    return;
+  }
+  // Browser fallback
+  try {
+    if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+    else await document.exitFullscreen();
+  } catch {}
+  setIsFullscreen(prev => !prev);
+}, []);
 ```
 
-### Multi-View Navigation (In-Widget)
+### Key Constraints
 
-Do NOT use `sendFollowUpMessage` for navigation between views. Instead, manage views with React state inside a single widget:
-
-```typescript
-type ViewState =
-  | { view: "list" }
-  | { view: "detail"; id: string };
-
-const [viewState, setViewState] = useState<ViewState>({ view: "list" });
-
-if (viewState.view === "detail") return <DetailView id={viewState.id} />;
-return <ListView onSelect={(id) => setViewState({ view: "detail", id })} />;
-```
-
-### Optimistic Updates
-
-After calling `callTool` for mutations, update local state immediately — don't rely on `sendFollowUpMessage` to refresh:
-
-```typescript
-const [localItems, setLocalItems] = useState(items);
-
-const handleDelete = async (id: string) => {
-  await window.openai?.callTool?.("delete-item", { id });
-  setLocalItems(prev => prev.filter(i => i.id !== id));  // Instant UI update
-};
-```
-
-### Sandboxed iframe Constraints
-
-ChatGPT renders widgets in a sandboxed iframe. `confirm()`, `alert()`, and `prompt()` are **blocked** — they silently return `false` / `undefined`. Use in-widget UI patterns instead (e.g., two-click confirmation buttons).
+- **No `confirm()`, `alert()`, `prompt()`** — blocked in sandboxed iframe, returns `false`/`undefined`
+- **`makeStyles` (Griffel) is static** — use it for layout, inline styles for runtime colors
+- **Griffel `:hover` bug** — use longhand `borderTopColor` etc., not shorthand `borderColor`
+- **Multi-view navigation** — use React state inside the widget, NOT `sendFollowUpMessage`
+- **Mutations** — call `callTool` + optimistic local state update, NOT `sendFollowUpMessage`
 
 ---
 
-## Step 5: Build System
+## 8. Build System (`widgets/build.mts`)
 
-### Vite Build Script (`widgets/build.mts`)
-
-Each widget folder → single self-contained HTML file via `vite-plugin-singlefile`:
+Each widget folder → single self-contained HTML in `assets/`:
 
 ```typescript
 import { build } from "vite";
 import react from "@vitejs/plugin-react";
 import { viteSingleFile } from "vite-plugin-singlefile";
-import path from "path";
-import fs from "fs";
-
-const WIDGETS_DIR = path.resolve("src");
-const OUT_DIR = path.resolve("..", "assets");
-
-const widgetDirs = fs.readdirSync(WIDGETS_DIR)
-  .filter(d => fs.statSync(path.join(WIDGETS_DIR, d)).isDirectory())
-  .filter(d => d !== "hooks" && d !== "types");
 
 for (const widget of widgetDirs) {
-  console.log(`Building widget: ${widget}…`);
   await build({
     root: path.join(WIDGETS_DIR, widget),
     plugins: [react(), viteSingleFile()],
-    build: {
-      outDir: OUT_DIR,
-      emptyOutDir: false,
-      rollupOptions: { output: { entryFileNames: `${widget}.js` } },
-    },
+    build: { outDir: ASSETS_DIR, emptyOutDir: false },
   });
 }
 ```
 
-Each widget folder needs an `index.html` entry point that mounts the React app.
-
 ---
 
-## Step 6: Root Package Scripts
+## 9. Root `package.json` Scripts
 
 ```json
 {
@@ -379,31 +410,60 @@ Each widget folder needs an `index.html` entry point that mounts the React app.
     "seed": "cd server && npm run seed",
     "build:widgets": "cd widgets && npm run build",
     "start:server": "cd server && npm start",
-    "dev:server": "cd server && npm run dev"
+    "dev:server": "cd server && npm run dev",
+    "inspector": "npx @modelcontextprotocol/inspector"
   },
-  "devDependencies": {
-    "azurite": "^3.31.0"
-  }
+  "devDependencies": { "azurite": "^3.31.0" }
 }
 ```
 
 ---
 
-## Checklist for New MCP Widget Servers
+## 10. Copilot Prompts to Build a New Project
 
-- [ ] Server uses `enableJsonResponse: true` (prevents SSE timeout)
-- [ ] Server uses `sessionIdGenerator: undefined` (stateless mode)
+Use these prompts in sequence with GitHub Copilot to scaffold a new MCP widget project:
+
+### Prompt 1: Seed Data
+
+> *"I'm building an MCP server for [YOUR DOMAIN]. Create a `db/` folder with JSON seed files. My entities are: [ENTITY LIST WITH FIELDS]. Use the format `{ "rows": [{ "id": "1", ... }] }`. Include 3-5 realistic records per entity."*
+
+### Prompt 2: Database Layer
+
+> *"Create `server/src/db.ts` using `@azure/data-tables` with Azurite. Define table clients and entity interfaces for: [ENTITY LIST]. Include CRUD helpers: getAll, getById, update, create, delete. Arrays and objects should be stored as JSON strings. Always use `{ allowInsecureConnection: true }`."*
+
+### Prompt 3: Seed Script
+
+> *"Create `server/src/seed.ts` that reads each JSON file from `db/` and upserts the rows into Azurite tables using the db.ts helpers. Use the pattern from this project's seed.ts."*
+
+### Prompt 4: MCP Server
+
+> *"Create `server/src/mcp-server.ts` with tools for my entities. Widget tools should include `_meta` with `openai/outputTemplate`, `structuredContent` in responses, and resource registration with `text/html+skybridge`. Data tools should return text only. Follow this project's pattern."*
+
+### Prompt 5: Widget
+
+> *"Create a widget in `widgets/src/my-widget/` with index.html (include the CSS reset for no double scrollbar), main.tsx, and MyWidget.tsx. Read data from `useOpenAiGlobal('toolOutput')`. Use `useThemeColors` for dark/light mode. Add a fullscreen toggle icon button."*
+
+### Prompt 6: Update Server for New Entities
+
+> *"I added a new entity `[NAME]` to my `db/` folder. Update `db.ts` to add a table client and CRUD helpers, update `seed.ts` to seed it, and add tools in `mcp-server.ts` to display and manage it."*
+
+---
+
+## Checklist
+
+- [ ] `db/` folder has JSON files with `{ "rows": [...] }` format and `id` per row
+- [ ] `db.ts` uses `{ allowInsecureConnection: true }` for Azurite
+- [ ] `seed.ts` reads `db/*.json` and upserts into tables
+- [ ] Server uses `enableJsonResponse: true` and `sessionIdGenerator: undefined`
 - [ ] GET and DELETE on `/mcp` are handled (not 405)
-- [ ] CORS allows `*` origin with MCP headers
-- [ ] Azurite clients use `allowInsecureConnection: true`
+- [ ] CORS allows ChatGPT/Copilot origins
 - [ ] Resources registered with `mimeType: "text/html+skybridge"`
-- [ ] Tool definitions include `_meta` with `openai/outputTemplate` pointing to resource URI
-- [ ] Tool responses include both `structuredContent` (data) and `_meta` (widget pointer)
-- [ ] Widgets read data from `window.openai.toolOutput`
-- [ ] Widgets use `window.openai.callTool()` for mutations
-- [ ] Widgets use `window.openai.theme` for dark/light mode
-- [ ] Layout styles in `makeStyles`, color styles inline via theme object
-- [ ] No `confirm()` / `alert()` / `prompt()` — use in-widget UI
-- [ ] Multi-view navigation via React state, not `sendFollowUpMessage`
-- [ ] Mutations use optimistic local state updates
+- [ ] Widget tool definitions include `_meta` with `openai/outputTemplate`
+- [ ] Widget tool responses include `structuredContent` + `_meta`
+- [ ] Data tools return text only (no `_meta`, no `structuredContent`)
+- [ ] Widget `index.html` has CSS reset (`html, body { margin:0; overflow:hidden; height:100% }`)
+- [ ] Widget reads data from `window.openai.toolOutput`
+- [ ] Widget uses `callTool` for mutations + optimistic state updates
+- [ ] Widget uses `window.openai.theme` for dark/light mode
+- [ ] No `confirm()` / `alert()` / `prompt()` in widgets
 - [ ] Widgets built as single-file HTML via `vite-plugin-singlefile`
