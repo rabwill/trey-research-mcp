@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   Table,
   TableHeader,
@@ -25,6 +25,10 @@ import {
   ChevronRight16Regular,
   Building20Regular,
   MoneyHand20Regular,
+  PersonAdd20Regular,
+  Dismiss16Regular,
+  Add16Regular,
+  Checkmark16Regular,
 } from "@fluentui/react-icons";
 import { useOpenAiGlobal } from "../hooks/useOpenAiGlobal";
 import { useThemeColors, type ThemeColors } from "../hooks/useThemeColors";
@@ -89,12 +93,58 @@ type ViewState = { view: "dashboard" } | { view: "consultant"; id: string } | { 
 
 const fallback: DashboardData = { consultants: [], projects: [], assignments: [], summary: { totalConsultants: 0, totalProjects: 0, totalAssignments: 0, totalBillableHours: 0 } };
 
+/** Shared input style factory */
+function inputStyle(t: ThemeColors): React.CSSProperties {
+  return {
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: `1px solid ${t.divider}`,
+    background: t.cardBg,
+    color: t.textPrimary,
+    fontSize: 13,
+    fontFamily: "inherit",
+    outline: "none",
+    transition: "border-color 0.15s ease",
+    width: "100%",
+    boxSizing: "border-box",
+  };
+}
+
+/** Shared button style factory */
+function btnStyle(t: ThemeColors, variant: "primary" | "danger" | "ghost" = "primary"): React.CSSProperties {
+  const base: React.CSSProperties = {
+    padding: "7px 16px",
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    transition: "opacity 0.15s ease",
+    border: "none",
+    whiteSpace: "nowrap",
+  };
+  if (variant === "primary") return { ...base, background: t.brand, color: "#fff" };
+  if (variant === "danger") return { ...base, background: "transparent", color: t.amber, border: `1px solid ${t.amber}44`, padding: "5px 10px", fontSize: 12 };
+  return { ...base, background: "transparent", color: t.textSecondary, padding: "5px 10px", fontSize: 12 };
+}
+
 export function Dashboard() {
   const s = useStyles();
   const t = useThemeColors();
   const toolOutput = useOpenAiGlobal<DashboardData>("toolOutput");
   const data = toolOutput ?? fallback;
+  // Auto-detect single-project payloads (from show-project-details tool)
+  const autoProjectId = data.projects.length === 1 && (data.summary?.totalProjects ?? 0) <= 1
+    ? data.projects[0].id
+    : undefined;
   const [viewState, setViewState] = useState<ViewState>({ view: "dashboard" });
+  // Navigate to project detail when a single-project payload arrives
+  React.useEffect(() => {
+    if (autoProjectId) setViewState({ view: "project", id: autoProjectId });
+  }, [autoProjectId]);
   const allAssignments = data.assignments ?? [];
 
   /* Shared inline-style factories */
@@ -234,76 +284,7 @@ export function Dashboard() {
         </div>
       );
     }
-    const projAsn = allAssignments.filter((a) => a.projectId === project.id);
-    const totalHrs = projAsn.reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
-
-    return (
-      <div className={s.root} style={{ background: t.surface, color: t.textPrimary }}>
-        <div className={s.breadcrumb} style={{ color: t.textSecondary }}>
-          <span style={{ color: t.brand, cursor: "pointer", fontWeight: 500 }} onClick={() => setViewState({ view: "dashboard" })}>
-            <ArrowLeft16Regular style={{ verticalAlign: "middle", marginRight: 2 }} />Dashboard
-          </span>
-          <ChevronRight16Regular />
-          <span style={{ color: t.textPrimary, fontWeight: 500 }}>{project.name}</span>
-        </div>
-
-        <div style={{ ...cardStyle, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.3px" }}>{project.name}</div>
-          <Body1 style={{ color: t.textSecondary, lineHeight: "1.5" }}>{project.description}</Body1>
-          <Divider style={{ margin: "4px 0" }} />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textSecondary }}><Building20Regular /><strong>Client:</strong> {project.clientName}</span>
-            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textSecondary }}><People24Regular /><strong>Contact:</strong> {project.clientContact}</span>
-            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textSecondary }}><Mail20Regular />{project.clientEmail}</span>
-          </div>
-        </div>
-
-        <div className={s.statsGrid}>
-          {[{ v: projAsn.length, l: "Team Members" }, { v: totalHrs.toLocaleString(), l: "Total Forecast Hours" }].map(({ v, l }) => (
-            <div key={l} style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <span style={{ fontSize: 28, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.5px" }}>{v}</span>
-              <span style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary, textTransform: "uppercase", letterSpacing: "0.3px" }}>{l}</span>
-            </div>
-          ))}
-        </div>
-
-        {projAsn.length > 0 && (
-          <>
-            <div className={s.sectionHeader}>
-              <span style={{ fontSize: 16, fontWeight: 600, color: t.textPrimary }}>Team</span>
-              <span style={{ fontSize: 12, fontWeight: 500, color: t.textTertiary, background: t.surface, padding: "2px 10px", borderRadius: 12 }}>{projAsn.length} members</span>
-            </div>
-            <div className={s.tableWrapper} style={{ border: `1px solid ${t.divider}`, background: t.cardBg }}>
-              <Table className={s.table} size="small">
-                <TableHeader style={{ background: t.surface }}><TableRow>
-                  <TableHeaderCell>Consultant</TableHeaderCell><TableHeaderCell>Role</TableHeaderCell><TableHeaderCell>Billable</TableHeaderCell><TableHeaderCell>Rate</TableHeaderCell><TableHeaderCell>Forecast Hrs</TableHeaderCell>
-                </TableRow></TableHeader>
-                <TableBody>
-                  {projAsn.map((asn, i) => {
-                    const c = data.consultants.find((x) => x.id === asn.consultantId);
-                    const fh = (asn.forecast ?? []).reduce((x, f) => x + f.hours, 0);
-                    return (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setViewState({ view: "consultant", id: asn.consultantId })}>
-                            <Avatar src={c?.photoUrl} name={asn.consultantName ?? "?"} size={32} />
-                            <span style={{ color: t.brand, fontWeight: 500 }}>{asn.consultantName ?? `Consultant ${asn.consultantId}`}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell><Pill bg={t.purpleBg} color={t.purple}>{asn.role}</Pill></TableCell>
-                        <TableCell><BillablePill billable={asn.billable} t={t} /></TableCell>
-                        <TableCell><Body1>${asn.rate}/hr</Body1></TableCell>
-                        <TableCell><Body1 style={{ fontWeight: 600 }}>{fh.toLocaleString()}</Body1></TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </>
-        )}
-      </div>
-    );
+    return <ProjectDetailView project={project} data={data} allAssignments={allAssignments} s={s} t={t} cardStyle={cardStyle} setViewState={setViewState} />;
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -408,6 +389,460 @@ export function Dashboard() {
           <People24Regular style={{ fontSize: 40, color: t.textTertiary, display: "block", margin: "0 auto 12px" }} />
           <Body1>No data loaded yet.</Body1>
           <Caption1 style={{ marginTop: 4, color: t.textTertiary }}>Use the MCP tool to hydrate this dashboard with HR data.</Caption1>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROJECT DETAIL VIEW (with assign / remove functionality)
+   ═══════════════════════════════════════════════════════════════════════════ */
+function ProjectDetailView({
+  project, data, allAssignments, s, t, cardStyle, setViewState,
+}: {
+  project: Project;
+  data: DashboardData;
+  allAssignments: Assignment[];
+  s: ReturnType<typeof useStyles>;
+  t: ThemeColors;
+  cardStyle: React.CSSProperties;
+  setViewState: (v: ViewState) => void;
+}) {
+  // Optimistic local copy of assignments so the UI updates immediately after mutations
+  const [localAssignments, setLocalAssignments] = useState(allAssignments);
+  // Keep in sync if parent data changes (e.g. full refresh)
+  React.useEffect(() => setLocalAssignments(allAssignments), [allAssignments]);
+
+  const projAsn = localAssignments.filter((a) => a.projectId === project.id);
+  const totalHrs = projAsn.reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
+
+  // Assign form state
+  const [showAssignForm, setShowAssignForm] = useState(false);
+  const [assignConsultantId, setAssignConsultantId] = useState("");
+  const [assignRole, setAssignRole] = useState("");
+  const [assignRate, setAssignRate] = useState("");
+  const [assignBillable, setAssignBillable] = useState(true);
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+
+  // Bulk assign state
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
+  const [bulkSelections, setBulkSelections] = useState<Set<string>>(new Set());
+  const [bulkRole, setBulkRole] = useState("");
+  const [bulkRate, setBulkRate] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
+
+  // Unassigned consultants for this project
+  const assignedIds = new Set(projAsn.map((a) => a.consultantId));
+  const unassigned = data.consultants.filter((c) => !assignedIds.has(c.id));
+
+  const clearFeedback = () => setTimeout(() => setFeedback(null), 4000);
+
+  const handleAssign = useCallback(async () => {
+    if (!assignConsultantId || !assignRole) return;
+    setAssignBusy(true);
+    setFeedback(null);
+    try {
+      const result = await window.openai?.callTool?.("assign-consultant-to-project", {
+        projectId: project.id,
+        consultantId: assignConsultantId,
+        role: assignRole,
+        billable: assignBillable,
+        rate: assignRate ? Number(assignRate) : undefined,
+      });
+      const consultant = data.consultants.find((c) => c.id === assignConsultantId);
+      // Optimistically add to local state so table updates immediately
+      setLocalAssignments((prev) => [
+        ...prev,
+        {
+          id: `${project.id},${assignConsultantId}`,
+          projectId: project.id,
+          consultantId: assignConsultantId,
+          role: assignRole,
+          billable: assignBillable,
+          rate: assignRate ? Number(assignRate) : 0,
+          forecast: [],
+          delivered: [],
+          consultantName: consultant?.name ?? assignConsultantId,
+          projectName: project.name,
+          clientName: project.clientName,
+        },
+      ]);
+      setFeedback({ type: "success", msg: `Assigned ${consultant?.name ?? assignConsultantId} as ${assignRole}` });
+      setAssignConsultantId("");
+      setAssignRole("");
+      setAssignRate("");
+      setShowAssignForm(false);
+      clearFeedback();
+    } catch (err: any) {
+      setFeedback({ type: "error", msg: err?.message ?? "Assignment failed" });
+      clearFeedback();
+    } finally {
+      setAssignBusy(false);
+    }
+  }, [assignConsultantId, assignRole, assignBillable, assignRate, project.id, data.consultants]);
+
+  const handleBulkAssign = useCallback(async () => {
+    if (bulkSelections.size === 0 || !bulkRole) return;
+    setBulkBusy(true);
+    setFeedback(null);
+    try {
+      const assignments = Array.from(bulkSelections).map((consultantId) => ({
+        consultantId,
+        role: bulkRole,
+        billable: true,
+        rate: bulkRate ? Number(bulkRate) : undefined,
+      }));
+      await window.openai?.callTool?.("bulk-assign-consultants", {
+        projectId: project.id,
+        assignments,
+      });
+      // Optimistically add all bulk-assigned consultants to local state
+      const newAssignments = Array.from(bulkSelections).map((cId) => {
+        const c = data.consultants.find((x) => x.id === cId);
+        return {
+          id: `${project.id},${cId}`,
+          projectId: project.id,
+          consultantId: cId,
+          role: bulkRole,
+          billable: true,
+          rate: bulkRate ? Number(bulkRate) : 0,
+          forecast: [],
+          delivered: [],
+          consultantName: c?.name ?? cId,
+          projectName: project.name,
+          clientName: project.clientName,
+        };
+      });
+      setLocalAssignments((prev) => [...prev, ...newAssignments]);
+      setFeedback({ type: "success", msg: `Assigned ${bulkSelections.size} consultant(s) to project` });
+      setBulkSelections(new Set());
+      setBulkRole("");
+      setBulkRate("");
+      setShowBulkAssign(false);
+      clearFeedback();
+    } catch (err: any) {
+      setFeedback({ type: "error", msg: err?.message ?? "Bulk assignment failed" });
+      clearFeedback();
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [bulkSelections, bulkRole, bulkRate, project.id]);
+
+  const handleRemove = useCallback(async (consultantId: string, consultantName: string) => {
+    // Two-click confirmation: first click sets pending, second click confirms
+    if (pendingRemove !== consultantId) {
+      setPendingRemove(consultantId);
+      // Auto-cancel after 3 seconds
+      setTimeout(() => setPendingRemove((cur) => cur === consultantId ? null : cur), 3000);
+      return;
+    }
+    setPendingRemove(null);
+    setFeedback(null);
+    try {
+      await window.openai?.callTool?.("remove-assignment", {
+        projectId: project.id,
+        consultantId,
+      });
+      // Optimistically remove from local state
+      setLocalAssignments((prev) => prev.filter(
+        (a) => !(a.projectId === project.id && a.consultantId === consultantId)
+      ));
+      setFeedback({ type: "success", msg: `Removed ${consultantName} from project` });
+      clearFeedback();
+    } catch (err: any) {
+      setFeedback({ type: "error", msg: err?.message ?? "Remove failed" });
+      clearFeedback();
+    }
+  }, [project.id, pendingRemove]);
+
+  const toggleBulkSelection = (id: string) => {
+    setBulkSelections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <div className={s.root} style={{ background: t.surface, color: t.textPrimary }}>
+      {/* Breadcrumb */}
+      <div className={s.breadcrumb} style={{ color: t.textSecondary }}>
+        <span style={{ color: t.brand, cursor: "pointer", fontWeight: 500 }} onClick={() => setViewState({ view: "dashboard" })}>
+          <ArrowLeft16Regular style={{ verticalAlign: "middle", marginRight: 2 }} />Dashboard
+        </span>
+        <ChevronRight16Regular />
+        <span style={{ color: t.textPrimary, fontWeight: 500 }}>{project.name}</span>
+      </div>
+
+      {/* Project Header */}
+      <div style={{ ...cardStyle, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.3px" }}>{project.name}</div>
+        <Body1 style={{ color: t.textSecondary, lineHeight: "1.5" }}>{project.description}</Body1>
+        <Divider style={{ margin: "4px 0" }} />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textSecondary }}><Building20Regular /><strong>Client:</strong> {project.clientName}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textSecondary }}><People24Regular /><strong>Contact:</strong> {project.clientContact}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textSecondary }}><Mail20Regular />{project.clientEmail}</span>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className={s.statsGrid}>
+        {[{ v: projAsn.length, l: "Team Members" }, { v: totalHrs.toLocaleString(), l: "Total Forecast Hours" }].map(({ v, l }) => (
+          <div key={l} style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 28, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.5px" }}>{v}</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary, textTransform: "uppercase", letterSpacing: "0.3px" }}>{l}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Feedback banner */}
+      {feedback && (
+        <div style={{
+          padding: "10px 16px",
+          borderRadius: 8,
+          fontSize: 13,
+          fontWeight: 500,
+          background: feedback.type === "success" ? t.greenBg : t.amberBg,
+          color: feedback.type === "success" ? t.green : t.amber,
+          border: `1px solid ${feedback.type === "success" ? t.green : t.amber}33`,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}>
+          {feedback.type === "success" ? <Checkmark16Regular /> : <Dismiss16Regular />}
+          {feedback.msg}
+        </div>
+      )}
+
+      {/* Team section header with actions */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 16, fontWeight: 600, color: t.textPrimary }}>Team</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: t.textTertiary, background: t.surface, padding: "2px 10px", borderRadius: 12 }}>{projAsn.length} members</span>
+        </div>
+        {unassigned.length > 0 && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              style={{ ...btnStyle(t, "primary"), opacity: showAssignForm ? 0.7 : 1 }}
+              onClick={() => { setShowAssignForm(!showAssignForm); setShowBulkAssign(false); }}
+            >
+              <PersonAdd20Regular style={{ fontSize: 16 }} />Assign
+            </button>
+            {unassigned.length > 1 && (
+              <button
+                style={{ ...btnStyle(t, "ghost"), border: `1px solid ${t.divider}`, opacity: showBulkAssign ? 0.7 : 1 }}
+                onClick={() => { setShowBulkAssign(!showBulkAssign); setShowAssignForm(false); }}
+              >
+                <People24Regular style={{ fontSize: 16 }} />Bulk Assign
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Single assign form */}
+      {showAssignForm && unassigned.length > 0 && (
+        <div style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: t.textPrimary, display: "flex", alignItems: "center", gap: 8 }}>
+            <PersonAdd20Regular />Assign Consultant
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary }}>Consultant</label>
+              <select
+                value={assignConsultantId}
+                onChange={(e) => setAssignConsultantId(e.target.value)}
+                style={{ ...inputStyle(t), cursor: "pointer" }}
+              >
+                <option value="">Select consultant…</option>
+                {unassigned.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name} — {c.roles.join(", ")}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary }}>Role</label>
+              <input
+                type="text"
+                placeholder="e.g. Architect, Developer…"
+                value={assignRole}
+                onChange={(e) => setAssignRole(e.target.value)}
+                style={inputStyle(t)}
+                onFocus={(e) => { e.target.style.borderColor = t.brand; }}
+                onBlur={(e) => { e.target.style.borderColor = t.divider; }}
+              />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary }}>Rate ($/hr)</label>
+              <input
+                type="number"
+                placeholder="e.g. 100"
+                value={assignRate}
+                onChange={(e) => setAssignRate(e.target.value)}
+                style={inputStyle(t)}
+                onFocus={(e) => { e.target.style.borderColor = t.brand; }}
+                onBlur={(e) => { e.target.style.borderColor = t.divider; }}
+              />
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, paddingBottom: 4 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: t.textPrimary, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={assignBillable}
+                  onChange={(e) => setAssignBillable(e.target.checked)}
+                  style={{ width: 16, height: 16, cursor: "pointer", accentColor: t.brand }}
+                />
+                Billable
+              </label>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button style={btnStyle(t, "ghost")} onClick={() => setShowAssignForm(false)}>Cancel</button>
+            <button
+              style={{ ...btnStyle(t, "primary"), opacity: (!assignConsultantId || !assignRole || assignBusy) ? 0.5 : 1 }}
+              disabled={!assignConsultantId || !assignRole || assignBusy}
+              onClick={handleAssign}
+            >
+              {assignBusy ? "Assigning…" : <><Add16Regular />Assign</>}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk assign form */}
+      {showBulkAssign && unassigned.length > 0 && (
+        <div style={{ ...cardStyle, padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: t.textPrimary, display: "flex", alignItems: "center", gap: 8 }}>
+            <People24Regular />Bulk Assign Consultants
+          </div>
+          <div style={{ fontSize: 12, color: t.textSecondary }}>Select consultants to assign, then set a role and rate for all.</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto", border: `1px solid ${t.divider}`, borderRadius: 8, padding: 4 }}>
+            {unassigned.map((c) => (
+              <label
+                key={c.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 6, cursor: "pointer",
+                  background: bulkSelections.has(c.id) ? t.brandLight : "transparent",
+                  transition: "background 0.1s ease",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={bulkSelections.has(c.id)}
+                  onChange={() => toggleBulkSelection(c.id)}
+                  style={{ width: 16, height: 16, cursor: "pointer", accentColor: t.brand }}
+                />
+                <Avatar src={c.photoUrl} name={c.name} size={28} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: t.textPrimary }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: t.textSecondary }}>{c.roles.join(", ")} · {c.location.city}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary }}>Role for all</label>
+              <input
+                type="text"
+                placeholder="e.g. Developer"
+                value={bulkRole}
+                onChange={(e) => setBulkRole(e.target.value)}
+                style={inputStyle(t)}
+                onFocus={(e) => { e.target.style.borderColor = t.brand; }}
+                onBlur={(e) => { e.target.style.borderColor = t.divider; }}
+              />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: t.textSecondary }}>Rate for all ($/hr)</label>
+              <input
+                type="number"
+                placeholder="e.g. 100"
+                value={bulkRate}
+                onChange={(e) => setBulkRate(e.target.value)}
+                style={inputStyle(t)}
+                onFocus={(e) => { e.target.style.borderColor = t.brand; }}
+                onBlur={(e) => { e.target.style.borderColor = t.divider; }}
+              />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: t.textTertiary, marginRight: "auto" }}>{bulkSelections.size} selected</span>
+            <button style={btnStyle(t, "ghost")} onClick={() => setShowBulkAssign(false)}>Cancel</button>
+            <button
+              style={{ ...btnStyle(t, "primary"), opacity: (bulkSelections.size === 0 || !bulkRole || bulkBusy) ? 0.5 : 1 }}
+              disabled={bulkSelections.size === 0 || !bulkRole || bulkBusy}
+              onClick={handleBulkAssign}
+            >
+              {bulkBusy ? "Assigning…" : <><Add16Regular />Assign {bulkSelections.size}</>}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Team table */}
+      {projAsn.length > 0 && (
+        <div className={s.tableWrapper} style={{ border: `1px solid ${t.divider}`, background: t.cardBg }}>
+          <Table className={s.table} size="small">
+            <TableHeader style={{ background: t.surface }}><TableRow>
+              <TableHeaderCell>Consultant</TableHeaderCell>
+              <TableHeaderCell>Role</TableHeaderCell>
+              <TableHeaderCell>Billable</TableHeaderCell>
+              <TableHeaderCell>Rate</TableHeaderCell>
+              <TableHeaderCell>Forecast Hrs</TableHeaderCell>
+              <TableHeaderCell style={{ width: 60 }} />
+            </TableRow></TableHeader>
+            <TableBody>
+              {projAsn.map((asn, i) => {
+                const c = data.consultants.find((x) => x.id === asn.consultantId);
+                const fh = (asn.forecast ?? []).reduce((x, f) => x + f.hours, 0);
+                return (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setViewState({ view: "consultant", id: asn.consultantId })}>
+                        <Avatar src={c?.photoUrl} name={asn.consultantName ?? "?"} size={32} />
+                        <span style={{ color: t.brand, fontWeight: 500 }}>{asn.consultantName ?? `Consultant ${asn.consultantId}`}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell><Pill bg={t.purpleBg} color={t.purple}>{asn.role}</Pill></TableCell>
+                    <TableCell><BillablePill billable={asn.billable} t={t} /></TableCell>
+                    <TableCell><Body1>${asn.rate}/hr</Body1></TableCell>
+                    <TableCell><Body1 style={{ fontWeight: 600 }}>{fh.toLocaleString()}</Body1></TableCell>
+                    <TableCell>
+                      <button
+                        style={{
+                          ...btnStyle(t, pendingRemove === asn.consultantId ? "danger" : "ghost"),
+                          ...(pendingRemove === asn.consultantId
+                            ? { background: t.amberBg, fontWeight: 700 }
+                            : {}),
+                        }}
+                        title={pendingRemove === asn.consultantId
+                          ? `Click again to confirm removal`
+                          : `Remove ${asn.consultantName ?? "consultant"}`}
+                        onClick={() => handleRemove(asn.consultantId, asn.consultantName ?? asn.consultantId)}
+                      >
+                        {pendingRemove === asn.consultantId ? <>Remove?</> : <Dismiss16Regular />}
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {projAsn.length === 0 && unassigned.length > 0 && !showAssignForm && !showBulkAssign && (
+        <div style={{ ...cardStyle, padding: "32px 24px", textAlign: "center", color: t.textTertiary }}>
+          <People24Regular style={{ fontSize: 36, display: "block", margin: "0 auto 8px", color: t.textTertiary }} />
+          <Body1>No consultants assigned yet.</Body1>
+          <Caption1 style={{ display: "block", marginTop: 4 }}>Use the Assign button above to add team members.</Caption1>
         </div>
       )}
     </div>

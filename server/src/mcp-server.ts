@@ -264,6 +264,101 @@ const projectDetailInputSchema = {
   additionalProperties: false,
 };
 
+const assignConsultantInputSchema = {
+  type: "object" as const,
+  properties: {
+    projectId: {
+      type: "string" as const,
+      description: "The project ID to assign the consultant to.",
+    },
+    consultantId: {
+      type: "string" as const,
+      description: "The consultant ID to assign.",
+    },
+    role: {
+      type: "string" as const,
+      description: "The role the consultant will play on the project (e.g. Architect, Developer, Designer, Project lead).",
+    },
+    billable: {
+      type: "boolean" as const,
+      description: "Whether the assignment is billable. Defaults to true.",
+    },
+    rate: {
+      type: "number" as const,
+      description: "Hourly rate for the consultant on this project. Defaults to 0.",
+    },
+    forecast: {
+      type: "array" as const,
+      items: {
+        type: "object" as const,
+        properties: {
+          month: { type: "number" as const, description: "Month (1-12)." },
+          year: { type: "number" as const, description: "Year." },
+          hours: { type: "number" as const, description: "Forecasted hours." },
+        },
+        required: ["month", "year", "hours"],
+      },
+      description: "Optional forecasted hours per month.",
+    },
+  },
+  required: ["projectId", "consultantId", "role"],
+  additionalProperties: false,
+};
+
+const bulkAssignInputSchema = {
+  type: "object" as const,
+  properties: {
+    projectId: {
+      type: "string" as const,
+      description: "The project ID to assign consultants to.",
+    },
+    assignments: {
+      type: "array" as const,
+      items: {
+        type: "object" as const,
+        properties: {
+          consultantId: { type: "string" as const, description: "The consultant ID." },
+          role: { type: "string" as const, description: "The role on the project." },
+          billable: { type: "boolean" as const, description: "Whether billable. Defaults to true." },
+          rate: { type: "number" as const, description: "Hourly rate. Defaults to 0." },
+          forecast: {
+            type: "array" as const,
+            items: {
+              type: "object" as const,
+              properties: {
+                month: { type: "number" as const },
+                year: { type: "number" as const },
+                hours: { type: "number" as const },
+              },
+              required: ["month", "year", "hours"],
+            },
+          },
+        },
+        required: ["consultantId", "role"],
+      },
+      description: "Array of consultant assignments to create.",
+    },
+  },
+  required: ["projectId", "assignments"],
+  additionalProperties: false,
+};
+
+const removeAssignmentInputSchema = {
+  type: "object" as const,
+  properties: {
+    projectId: {
+      type: "string" as const,
+      description: "The project ID.",
+    },
+    consultantId: {
+      type: "string" as const,
+      description: "The consultant ID to remove from the project.",
+    },
+  },
+  required: ["projectId", "consultantId"],
+  additionalProperties: false,
+};
+
 // ─── Zod parsers (for runtime validation) ──────────────────────────
 
 const profileParser = z.object({ consultantId: z.string() });
@@ -289,6 +384,33 @@ const bulkUpdateParser = z.object({
   ),
 });
 const projectDetailParser = z.object({ projectId: z.string() });
+
+const assignConsultantParser = z.object({
+  projectId: z.string(),
+  consultantId: z.string(),
+  role: z.string(),
+  billable: z.boolean().optional(),
+  rate: z.number().optional(),
+  forecast: z.array(z.object({ month: z.number(), year: z.number(), hours: z.number() })).optional(),
+});
+
+const bulkAssignParser = z.object({
+  projectId: z.string(),
+  assignments: z.array(
+    z.object({
+      consultantId: z.string(),
+      role: z.string(),
+      billable: z.boolean().optional(),
+      rate: z.number().optional(),
+      forecast: z.array(z.object({ month: z.number(), year: z.number(), hours: z.number() })).optional(),
+    })
+  ),
+});
+
+const removeAssignmentParser = z.object({
+  projectId: z.string(),
+  consultantId: z.string(),
+});
 
 // ─── Server factory ────────────────────────────────────────────────
 
@@ -443,6 +565,42 @@ export function createHRServer(): Server {
         destructiveHint: false,
         openWorldHint: false,
         readOnlyHint: true,
+      },
+    },
+    {
+      name: "assign-consultant-to-project",
+      title: "Assign Consultant to Project",
+      description:
+        "Assign a single consultant to a project with a specified role, optional billing rate, and optional forecast hours.",
+      inputSchema: assignConsultantInputSchema,
+      annotations: {
+        destructiveHint: false,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
+    },
+    {
+      name: "bulk-assign-consultants",
+      title: "Bulk Assign Consultants",
+      description:
+        "Assign multiple consultants to a project at once. Each assignment includes a role, optional billing rate, and optional forecast.",
+      inputSchema: bulkAssignInputSchema,
+      annotations: {
+        destructiveHint: false,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
+    },
+    {
+      name: "remove-assignment",
+      title: "Remove Assignment",
+      description:
+        "Remove a consultant's assignment from a project.",
+      inputSchema: removeAssignmentInputSchema,
+      annotations: {
+        destructiveHint: true,
+        openWorldHint: false,
+        readOnlyHint: false,
       },
     },
   ];
@@ -667,6 +825,10 @@ export function createHRServer(): Server {
             consultantName: consultantMap.get(a.consultantId)?.name ?? "Unknown",
           }));
 
+          const totalBillableHours = enrichedAssignments.reduce((sum, a) => {
+            return sum + a.forecast.reduce((s: number, f: any) => s + f.hours, 0);
+          }, 0);
+
           return {
             content: [
               {
@@ -675,19 +837,109 @@ export function createHRServer(): Server {
               },
             ],
             structuredContent: {
-              project: parseProject(project),
+              projects: [parseProject(project)],
               assignments: enrichedAssignments,
-              consultants: enrichedAssignments.map((a) => consultantMap.get(a.consultantId)).filter(Boolean),
+              consultants: allConsultants.map((c) => parseConsultant(c)),
               summary: {
-                totalConsultants: enrichedAssignments.length,
+                totalConsultants: allConsultants.length,
                 totalProjects: 1,
                 totalAssignments: enrichedAssignments.length,
-                totalBillableHours: enrichedAssignments.reduce((sum, a) => {
-                  return sum + a.forecast.reduce((s: number, f: any) => s + f.hours, 0);
-                }, 0),
+                totalBillableHours,
               },
             },
             _meta: invocationMeta(DASHBOARD_WIDGET),
+          };
+        }
+
+        // ──── Assign Consultant to Project ────
+        case "assign-consultant-to-project": {
+          const parsed = assignConsultantParser.parse(args);
+          const project = await db.getProjectById(parsed.projectId);
+          if (!project) {
+            return {
+              content: [{ type: "text" as const, text: `Project ${parsed.projectId} not found.` }],
+              isError: true,
+            };
+          }
+          const consultant = await db.getConsultantById(parsed.consultantId);
+          if (!consultant) {
+            return {
+              content: [{ type: "text" as const, text: `Consultant ${parsed.consultantId} not found.` }],
+              isError: true,
+            };
+          }
+          await db.createAssignment({
+            projectId: parsed.projectId,
+            consultantId: parsed.consultantId,
+            role: parsed.role,
+            billable: parsed.billable,
+            rate: parsed.rate,
+            forecast: parsed.forecast,
+          });
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Assigned ${consultant.name} to project "${project.name}" as ${parsed.role}${parsed.billable === false ? " (non-billable)" : ""}${parsed.rate ? ` at $${parsed.rate}/hr` : ""}.`,
+              },
+            ],
+          };
+        }
+
+        // ──── Bulk Assign Consultants ────
+        case "bulk-assign-consultants": {
+          const { projectId, assignments } = bulkAssignParser.parse(args);
+          const project = await db.getProjectById(projectId);
+          if (!project) {
+            return {
+              content: [{ type: "text" as const, text: `Project ${projectId} not found.` }],
+              isError: true,
+            };
+          }
+          const results: string[] = [];
+          for (const asn of assignments) {
+            const consultant = await db.getConsultantById(asn.consultantId);
+            if (!consultant) {
+              results.push(`✗ Consultant ${asn.consultantId} not found`);
+              continue;
+            }
+            await db.createAssignment({
+              projectId,
+              consultantId: asn.consultantId,
+              role: asn.role,
+              billable: asn.billable,
+              rate: asn.rate,
+              forecast: asn.forecast,
+            });
+            results.push(`✓ Assigned ${consultant.name} as ${asn.role}`);
+          }
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Bulk assignment to "${project.name}" complete:\n${results.join("\n")}`,
+              },
+            ],
+          };
+        }
+
+        // ──── Remove Assignment ────
+        case "remove-assignment": {
+          const { projectId, consultantId } = removeAssignmentParser.parse(args);
+          const removed = await db.deleteAssignment(projectId, consultantId);
+          if (!removed) {
+            return {
+              content: [{ type: "text" as const, text: `Assignment for consultant ${consultantId} on project ${projectId} not found.` }],
+              isError: true,
+            };
+          }
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Removed assignment: consultant ${consultantId} from project ${projectId}.`,
+              },
+            ],
           };
         }
 
