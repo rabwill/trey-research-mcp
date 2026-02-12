@@ -1,6 +1,6 @@
 # HR Consultant MCP Server
 
-MCP server with rich Fluent UI React widgets for managing HR consultants, projects, and assignments. Renders interactive UI inline in ChatGPT via the OpenAI widget protocol.
+MCP server with rich Fluent UI React widgets for managing HR consultants, projects, and assignments. Renders interactive UI inline in ChatGPT and Microsoft 365 Copilot via the OpenAI widget protocol.
 
 ## Prerequisites
 
@@ -21,43 +21,59 @@ npm run build:widgets      # Build widget HTML into assets/
 npm run start:server       # Start MCP server on http://localhost:8000
 ```
 
-## Connect to ChatGPT
+## Connect
+
+### ChatGPT
 
 **Settings → MCP → Add connector**
 - URL: `http://localhost:8000/mcp`
 - Transport: Streamable HTTP
 
+### Microsoft 365 Copilot
+
+Add the MCP endpoint URL via your Copilot agent configuration.
+
 ## MCP Tools
 
-| Tool | Type | Description |
+### Widget Tools
+
+| Tool | Widget | Description |
 |---|---|---|
-| `show-hr-dashboard` | Widget | Dashboard with KPIs, consultant cards, project list |
-| `show-consultant-profile` | Widget | Detailed consultant profile with assignments |
-| `show-project-details` | Widget | Project detail with team table, assign/remove UI |
-| `search-consultants` | Widget | Filter consultants by skill or name |
-| `show-bulk-editor` | Widget | Inline editor for bulk-editing consultant records |
-| `update-consultant` | Data | Update a single consultant's fields |
-| `bulk-update-consultants` | Data | Batch update multiple consultants |
-| `assign-consultant-to-project` | Data | Assign a consultant to a project with role/rate |
-| `bulk-assign-consultants` | Data | Assign multiple consultants to a project at once |
-| `remove-assignment` | Data | Remove a consultant from a project |
+| `show-hr-dashboard` | Dashboard | KPIs, consultant cards, project list. Optional filters: `consultantName`, `projectName`, `skill`, `role`, `billable`. |
+| `show-consultant-profile` | Profile | Detailed profile card with contact info, skills, certifications, roles, and assignments. Requires `consultantId`. |
+| `show-project-details` | Dashboard | Project detail with assigned consultants and forecasted hours. Requires `projectId`. |
+| `search-consultants` | Bulk Editor | Search consultants by `skill` or `name`, results shown in the bulk editor for viewing and editing. |
+| `show-bulk-editor` | Bulk Editor | View and edit consultant records. Optional filters: `skill`, `name`. |
+
+### Data Tools
+
+| Tool | Description |
+|---|---|
+| `update-consultant` | Update a single consultant's name, email, phone, skills, or roles. |
+| `bulk-update-consultants` | Batch-update multiple consultant records at once. |
+| `assign-consultant-to-project` | Assign a consultant to a project with a role, optional rate. |
+| `bulk-assign-consultants` | Assign multiple consultants to a project at once. |
+| `remove-assignment` | Remove a consultant's assignment from a project. |
 
 ## Sample Prompts
 
 | Prompt | What it does |
 |---|---|
-| *Show me the HR dashboard* | Opens the full dashboard widget |
+| *Show me the HR dashboard* | Opens the dashboard widget with all data |
+| *Show dashboard filtered by Azure skill* | Dashboard filtered to Azure-skilled consultants |
 | *Show profile for consultant 1* | Opens a consultant profile card |
-| *Search consultants with Azure skills* | Filters by skill |
 | *Show project details for project 1* | Opens project detail with team |
+| *Search consultants with Azure skills* | Finds matching consultants in the bulk editor |
+| *Open the bulk editor* | Opens the editor with all consultants |
+| *Open bulk editor for consultants named Avery* | Editor filtered to matching consultants |
 | *Assign consultant 3 to project 1 as Architect at $150/hr* | Creates an assignment |
 | *Remove consultant 2 from project 1* | Removes an assignment |
-| *Open the bulk editor* | Opens inline editing for all consultants |
 | *Update consultant 1 — add skill "Kubernetes"* | Updates a single field |
 
 ## Development
 
 ```bash
 npm run dev:server         # Server with hot-reload (tsx --watch)
-cd widgets && npx tsx build.mts   # Rebuild widgets after changes
+npm run build:widgets      # Rebuild widgets after changes
+npm run inspector          # Launch MCP Inspector for testing
 ```
