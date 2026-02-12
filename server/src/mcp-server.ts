@@ -231,24 +231,26 @@ const updateConsultantInputSchema = {
 const bulkUpdateInputSchema = {
   type: "object" as const,
   properties: {
-    updates: {
+    consultantIds: {
       type: "array" as const,
-      items: {
-        type: "object" as const,
-        properties: {
-          consultantId: { type: "string" as const },
-          name: { type: "string" as const },
-          email: { type: "string" as const },
-          phone: { type: "string" as const },
-          skills: { type: "array" as const, items: { type: "string" as const } },
-          roles: { type: "array" as const, items: { type: "string" as const } },
-        },
-        required: ["consultantId"],
-      },
-      description: "Array of consultant updates.",
+      items: { type: "string" as const },
+      description: "Array of consultant IDs to update.",
+    },
+    name: { type: "string" as const, description: "New name for all." },
+    email: { type: "string" as const, description: "New email for all." },
+    phone: { type: "string" as const, description: "New phone for all." },
+    skills: {
+      type: "array" as const,
+      items: { type: "string" as const },
+      description: "New skills list for all.",
+    },
+    roles: {
+      type: "array" as const,
+      items: { type: "string" as const },
+      description: "New roles list for all.",
     },
   },
-  required: ["updates"],
+  required: ["consultantIds"],
   additionalProperties: false,
 };
 
@@ -287,19 +289,6 @@ const assignConsultantInputSchema = {
       type: "number" as const,
       description: "Hourly rate for the consultant on this project. Defaults to 0.",
     },
-    forecast: {
-      type: "array" as const,
-      items: {
-        type: "object" as const,
-        properties: {
-          month: { type: "number" as const, description: "Month (1-12)." },
-          year: { type: "number" as const, description: "Year." },
-          hours: { type: "number" as const, description: "Forecasted hours." },
-        },
-        required: ["month", "year", "hours"],
-      },
-      description: "Optional forecasted hours per month.",
-    },
   },
   required: ["projectId", "consultantId", "role"],
   additionalProperties: false,
@@ -312,34 +301,25 @@ const bulkAssignInputSchema = {
       type: "string" as const,
       description: "The project ID to assign consultants to.",
     },
-    assignments: {
+    consultantIds: {
       type: "array" as const,
-      items: {
-        type: "object" as const,
-        properties: {
-          consultantId: { type: "string" as const, description: "The consultant ID." },
-          role: { type: "string" as const, description: "The role on the project." },
-          billable: { type: "boolean" as const, description: "Whether billable. Defaults to true." },
-          rate: { type: "number" as const, description: "Hourly rate. Defaults to 0." },
-          forecast: {
-            type: "array" as const,
-            items: {
-              type: "object" as const,
-              properties: {
-                month: { type: "number" as const },
-                year: { type: "number" as const },
-                hours: { type: "number" as const },
-              },
-              required: ["month", "year", "hours"],
-            },
-          },
-        },
-        required: ["consultantId", "role"],
-      },
-      description: "Array of consultant assignments to create.",
+      items: { type: "string" as const },
+      description: "Array of consultant IDs to assign.",
+    },
+    role: {
+      type: "string" as const,
+      description: "The role for all assigned consultants.",
+    },
+    billable: {
+      type: "boolean" as const,
+      description: "Whether the assignments are billable. Defaults to true.",
+    },
+    rate: {
+      type: "number" as const,
+      description: "Hourly rate for all assigned consultants. Defaults to 0.",
     },
   },
-  required: ["projectId", "assignments"],
+  required: ["projectId", "consultantIds", "role"],
   additionalProperties: false,
 };
 
@@ -372,16 +352,12 @@ const updateParser = z.object({
   roles: z.array(z.string()).optional(),
 });
 const bulkUpdateParser = z.object({
-  updates: z.array(
-    z.object({
-      consultantId: z.string(),
-      name: z.string().optional(),
-      email: z.string().optional(),
-      phone: z.string().optional(),
-      skills: z.array(z.string()).optional(),
-      roles: z.array(z.string()).optional(),
-    })
-  ),
+  consultantIds: z.array(z.string()),
+  name: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  skills: z.array(z.string()).optional(),
+  roles: z.array(z.string()).optional(),
 });
 const projectDetailParser = z.object({ projectId: z.string() });
 
@@ -391,20 +367,14 @@ const assignConsultantParser = z.object({
   role: z.string(),
   billable: z.boolean().optional(),
   rate: z.number().optional(),
-  forecast: z.array(z.object({ month: z.number(), year: z.number(), hours: z.number() })).optional(),
 });
 
 const bulkAssignParser = z.object({
   projectId: z.string(),
-  assignments: z.array(
-    z.object({
-      consultantId: z.string(),
-      role: z.string(),
-      billable: z.boolean().optional(),
-      rate: z.number().optional(),
-      forecast: z.array(z.object({ month: z.number(), year: z.number(), hours: z.number() })).optional(),
-    })
-  ),
+  consultantIds: z.array(z.string()),
+  role: z.string(),
+  billable: z.boolean().optional(),
+  rate: z.number().optional(),
 });
 
 const removeAssignmentParser = z.object({
@@ -785,10 +755,9 @@ export function createHRServer(): Server {
 
         // ──── Bulk Update ────
         case "bulk-update-consultants": {
-          const { updates } = bulkUpdateParser.parse(args);
+          const { consultantIds, ...changes } = bulkUpdateParser.parse(args);
           const results: string[] = [];
-          for (const upd of updates) {
-            const { consultantId, ...changes } = upd;
+          for (const consultantId of consultantIds) {
             const updated = await db.updateConsultant(consultantId, changes);
             results.push(
               updated
@@ -874,7 +843,6 @@ export function createHRServer(): Server {
             role: parsed.role,
             billable: parsed.billable,
             rate: parsed.rate,
-            forecast: parsed.forecast,
           });
           return {
             content: [
@@ -888,7 +856,7 @@ export function createHRServer(): Server {
 
         // ──── Bulk Assign Consultants ────
         case "bulk-assign-consultants": {
-          const { projectId, assignments } = bulkAssignParser.parse(args);
+          const { projectId, consultantIds, role, billable, rate } = bulkAssignParser.parse(args);
           const project = await db.getProjectById(projectId);
           if (!project) {
             return {
@@ -897,21 +865,20 @@ export function createHRServer(): Server {
             };
           }
           const results: string[] = [];
-          for (const asn of assignments) {
-            const consultant = await db.getConsultantById(asn.consultantId);
+          for (const consultantId of consultantIds) {
+            const consultant = await db.getConsultantById(consultantId);
             if (!consultant) {
-              results.push(`✗ Consultant ${asn.consultantId} not found`);
+              results.push(`✗ Consultant ${consultantId} not found`);
               continue;
             }
             await db.createAssignment({
               projectId,
-              consultantId: asn.consultantId,
-              role: asn.role,
-              billable: asn.billable,
-              rate: asn.rate,
-              forecast: asn.forecast,
+              consultantId,
+              role,
+              billable,
+              rate,
             });
-            results.push(`✓ Assigned ${consultant.name} as ${asn.role}`);
+            results.push(`✓ Assigned ${consultant.name} as ${role}`);
           }
           return {
             content: [

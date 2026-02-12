@@ -223,7 +223,10 @@ export function BulkEditor() {
         roles: r.roles,
       }));
 
-      await window.openai?.callTool?.("bulk-update-consultants", { updates });
+      // Call update-consultant for each dirty row individually
+      for (const upd of updates) {
+        await window.openai?.callTool?.("update-consultant", upd);
+      }
 
       setRows((prev) => prev.map((r) => ({ ...r, _dirty: false })));
       setMessage({ type: "success", text: `Saved ${dirty.length} record(s) successfully.` });

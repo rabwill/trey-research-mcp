@@ -489,15 +489,12 @@ function ProjectDetailView({
     setBulkBusy(true);
     setFeedback(null);
     try {
-      const assignments = Array.from(bulkSelections).map((consultantId) => ({
-        consultantId,
+      await window.openai?.callTool?.("bulk-assign-consultants", {
+        projectId: project.id,
+        consultantIds: Array.from(bulkSelections),
         role: bulkRole,
         billable: true,
         rate: bulkRate ? Number(bulkRate) : undefined,
-      }));
-      await window.openai?.callTool?.("bulk-assign-consultants", {
-        projectId: project.id,
-        assignments,
       });
       // Optimistically add all bulk-assigned consultants to local state
       const newAssignments = Array.from(bulkSelections).map((cId) => {
