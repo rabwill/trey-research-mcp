@@ -210,7 +210,7 @@ export function Dashboard() {
   const [searchFilter, setSearchFilter] = useState("");
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null);
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<"name" | "hours" | "rate">("name");
+  const [sortBy, setSortBy] = useState<"name" | "hours" | "rate" | "project">("name");
   const [showFilters, setShowFilters] = useState(false);
 
   /* ── Assign-to-project state ── */
@@ -333,13 +333,34 @@ export function Dashboard() {
       const consultantIds = new Set(fc.map((c) => c.id));
       fa = fa.filter((a) => consultantIds.has(a.consultantId));
     }
+    // Text search filter: match consultants by name/skill/location, then
+    // narrow assignments to those consultants + assignments whose project/role match
+    if (searchFilter.trim()) {
+      const q = searchFilter.trim().toLowerCase();
+      // Find matching consultants
+      fc = fc.filter((c) =>
+        c.name.toLowerCase().includes(q)
+        || c.skills?.some((sk) => sk.toLowerCase().includes(q))
+        || (c as any).location?.city?.toLowerCase().includes(q)
+      );
+      const matchedConsultantIds = new Set(fc.map((c) => c.id));
+      // Keep assignments where the consultant matches OR the project/role name matches
+      fa = fa.filter((a) =>
+        matchedConsultantIds.has(a.consultantId)
+        || (a.projectName ?? "").toLowerCase().includes(q)
+        || (a.role ?? "").toLowerCase().includes(q)
+      );
+      // Also include consultants that have matching assignments (project/role hit)
+      const assignmentConsultantIds = new Set(fa.map((a) => a.consultantId));
+      fc = data.consultants.filter((c) => assignmentConsultantIds.has(c.id) || matchedConsultantIds.has(c.id));
+    }
     // If project/role/billable filters are active, also narrow consultants to those with matching assignments
     if (selectedProjects.size > 0 || selectedRoles.size > 0 || billableFilter !== "all") {
       const activeConsultantIds = new Set(fa.map((a) => a.consultantId));
       fc = fc.filter((c) => activeConsultantIds.has(c.id));
     }
     return { filteredAssignments: fa, filteredConsultants: fc };
-  }, [allAssignments, data.consultants, selectedSkills, selectedProjects, selectedRoles, billableFilter]);
+  }, [allAssignments, data.consultants, selectedSkills, selectedProjects, selectedRoles, billableFilter, searchFilter]);
 
   const cardStyle: React.CSSProperties = { background: t.cardBg, borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: `1px solid ${t.divider}` };
 
@@ -380,7 +401,29 @@ export function Dashboard() {
 
     // Project breakdown
     const filteredProjectIds = new Set(filteredAssignments.map((a) => a.projectId));
-    const projectBreakdown = data.projects.filter((p) => selectedProjects.size === 0 ? true : selectedProjects.has(p.id)).filter((p) => filteredProjectIds.has(p.id) || selectedProjects.size === 0).map((p) => {
+    const hasTextSearch = searchFilter.trim().length > 0;
+    const projectBreakdown = data.projects
+      .filter((p) => {
+        // When a text search is active, only show projects that have matching assignments
+        // or whose name/client matches the query
+        if (hasTextSearch) {
+          const q = searchFilter.trim().toLowerCase();
+          const nameMatch = p.name.toLowerCase().includes(q) || (p as any).clientName?.toLowerCase().includes(q);
+          return filteredProjectIds.has(p.id) || nameMatch;
+        }
+        // Pill-based project filter
+        if (selectedProjects.size > 0) return selectedProjects.has(p.id);
+        return true;
+      })
+      .filter((p) => {
+        // When text search is active, require at least one matching assignment OR a direct name match
+        if (hasTextSearch) {
+          const q = searchFilter.trim().toLowerCase();
+          return filteredProjectIds.has(p.id) || p.name.toLowerCase().includes(q) || (p as any).clientName?.toLowerCase().includes(q);
+        }
+        return filteredProjectIds.has(p.id) || selectedProjects.size === 0;
+      })
+      .map((p) => {
       const projAsn = filteredAssignments.filter((a) => a.projectId === p.id);
       const forecastHrs = projAsn.reduce((sum, a) => sum + (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
       const revenue = projAsn.filter((a) => a.billable).reduce((sum, a) => sum + (a.rate ?? 0) * (a.forecast ?? []).reduce((x, f) => x + f.hours, 0), 0);
@@ -406,7 +449,7 @@ export function Dashboard() {
       projectBreakdown,
       roleDistribution,
     };
-  }, [data, filteredAssignments, filteredConsultants, selectedProjects]);
+  }, [data, filteredAssignments, filteredConsultants, selectedProjects, searchFilter]);
 
   /* ── Tab navigation ── */
   const tabs: { key: ViewState["view"]; label: string; icon: React.ReactNode }[] = [
@@ -741,11 +784,6 @@ export function Dashboard() {
           {/* Consultant cards */}
           <div className={s.cards}>
             {analytics.consultantUtil
-              .filter((c) => {
-                if (!searchFilter) return true;
-                const q = searchFilter.toLowerCase();
-                return c.name.toLowerCase().includes(q) || c.skills?.some((sk) => sk.toLowerCase().includes(q)) || c.location?.city?.toLowerCase().includes(q);
-              })
               .sort((a, b) => {
                 if (sortBy === "hours") return b.forecastHrs - a.forecastHrs;
                 if (sortBy === "rate") return b.revenue - a.revenue;
@@ -839,9 +877,52 @@ export function Dashboard() {
       {/* ─── PROJECTS TAB ──────────────────────────────── */}
       {currentTab === "projects" && (
         <>
+          {/* Search & Sort for projects */}
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+              <Filter16Regular style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: t.textTertiary }} />
+              <input
+                type="text"
+                placeholder="Filter by project name, client, or consultant…"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                style={{
+                  width: "100%", padding: "10px 12px 10px 34px", borderRadius: 8,
+                  border: `1px solid ${t.divider}`, background: t.cardBg, color: t.textPrimary,
+                  fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {(["name", "project"] as const).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => setSortBy(key)}
+                  style={{
+                    padding: "8px 14px", borderRadius: 8, border: `1px solid ${sortBy === key ? t.brand : t.divider}`,
+                    background: sortBy === key ? t.brandLight : "transparent", color: sortBy === key ? t.brand : t.textSecondary,
+                    fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  {key === "name" ? "Project Name" : "Consultant"}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className={s.cards}>
             {analytics.projectBreakdown
-              .sort((a, b) => b.forecastHrs - a.forecastHrs)
+              .sort((a, b) => {
+                if (sortBy === "project") {
+                  // Sort by first team member name
+                  const aFirstConsultant = a.assignments?.[0]?.consultantId ?? "";
+                  const bFirstConsultant = b.assignments?.[0]?.consultantId ?? "";
+                  const aName = data.consultants.find((c) => c.id === aFirstConsultant)?.name ?? "";
+                  const bName = data.consultants.find((c) => c.id === bFirstConsultant)?.name ?? "";
+                  return aName.localeCompare(bName);
+                }
+                return a.name.localeCompare(b.name);
+              })
               .map((p) => {
                 const isExpanded = expandedProject === p.id;
                 return (
@@ -1111,7 +1192,7 @@ export function Dashboard() {
               />
             </div>
             <div style={{ display: "flex", gap: 4 }}>
-              {(["name", "hours", "rate"] as const).map((key) => (
+              {(["name", "hours", "rate", "project"] as const).map((key) => (
                 <button
                   key={key}
                   onClick={() => setSortBy(key)}
@@ -1121,7 +1202,7 @@ export function Dashboard() {
                     fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
                   }}
                 >
-                  {key === "name" ? "Consultant" : key === "hours" ? "Hours" : "Rate"}
+                  {key === "name" ? "Consultant" : key === "hours" ? "Hours" : key === "rate" ? "Rate" : "Project"}
                 </button>
               ))}
             </div>
@@ -1157,16 +1238,10 @@ export function Dashboard() {
               </TableRow></TableHeader>
               <TableBody>
                 {filteredAssignments
-                  .filter((asn) => {
-                    if (!searchFilter) return true;
-                    const q = searchFilter.toLowerCase();
-                    return (asn.consultantName ?? asn.consultantId).toLowerCase().includes(q)
-                      || (asn.projectName ?? asn.projectId).toLowerCase().includes(q)
-                      || asn.role.toLowerCase().includes(q);
-                  })
                   .sort((a, b) => {
                     if (sortBy === "hours") return ((b.forecast ?? []).reduce((x, f) => x + f.hours, 0)) - ((a.forecast ?? []).reduce((x, f) => x + f.hours, 0));
                     if (sortBy === "rate") return (b.rate ?? 0) - (a.rate ?? 0);
+                    if (sortBy === "project") return (a.projectName ?? "").localeCompare(b.projectName ?? "");
                     return (a.consultantName ?? "").localeCompare(b.consultantName ?? "");
                   })
                   .map((asn, i) => {
