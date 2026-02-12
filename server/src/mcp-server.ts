@@ -26,32 +26,52 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as db from "./db.js";
+import { getPublicServerUrl } from "./index.js";
 
 // ─── Widget HTML loader ────────────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = path.resolve(__dirname, "..", "..", "assets");
 const MIME_TYPE = "text/html+skybridge";
 
+/**
+ * Read a widget's built HTML and inject the public server URL so the
+ * widget can call back to this server even when it is loaded through a
+ * tunnel or proxy (avoids private-network / mixed-content blocks).
+ *
+ * Injects a small `<script>` right after `<head>` that sets
+ * `window.__SERVER_BASE_URL__`.
+ */
 function readWidgetHtml(componentName: string): string {
   if (!fs.existsSync(ASSETS_DIR)) {
     throw new Error(
       `Widget assets not found at ${ASSETS_DIR}. Run "npm run build:widgets" first.`
     );
   }
+  let html: string | undefined;
   const directPath = path.join(ASSETS_DIR, `${componentName}.html`);
   if (fs.existsSync(directPath)) {
-    return fs.readFileSync(directPath, "utf8");
+    html = fs.readFileSync(directPath, "utf8");
+  } else {
+    // Try hashed fallback
+    const candidates = fs
+      .readdirSync(ASSETS_DIR)
+      .filter((f) => f.startsWith(`${componentName}-`) && f.endsWith(".html"))
+      .sort();
+    const fallback = candidates[candidates.length - 1];
+    if (fallback) {
+      html = fs.readFileSync(path.join(ASSETS_DIR, fallback), "utf8");
+    }
   }
-  // Try hashed fallback
-  const candidates = fs
-    .readdirSync(ASSETS_DIR)
-    .filter((f) => f.startsWith(`${componentName}-`) && f.endsWith(".html"))
-    .sort();
-  const fallback = candidates[candidates.length - 1];
-  if (fallback) {
-    return fs.readFileSync(path.join(ASSETS_DIR, fallback), "utf8");
+  if (!html) {
+    throw new Error(`Widget HTML for "${componentName}" not found in ${ASSETS_DIR}.`);
   }
-  throw new Error(`Widget HTML for "${componentName}" not found in ${ASSETS_DIR}.`);
+
+  // Inject public server URL into the widget
+  const serverUrl = getPublicServerUrl();
+  const injection = `<script>window.__SERVER_BASE_URL__=${JSON.stringify(serverUrl)};</script>`;
+  html = html.replace("<head>", `<head>${injection}`);
+
+  return html;
 }
 
 // ─── Widget definitions ────────────────────────────────────────────
@@ -166,9 +186,43 @@ function parseAssignment(a: db.AssignmentEntity) {
 
 const dashboardInputSchema = {
   type: "object" as const,
-  properties: {},
+  properties: {
+    consultantName: {
+      type: "string" as const,
+      description:
+        "Optional consultant name to pre-filter the dashboard (partial match, case-insensitive).",
+    },
+    projectName: {
+      type: "string" as const,
+      description:
+        "Optional project name to pre-filter the dashboard (partial match, case-insensitive).",
+    },
+    skill: {
+      type: "string" as const,
+      description:
+        "Optional skill to pre-filter the dashboard — shows only consultants with this skill and their assignments.",
+    },
+    role: {
+      type: "string" as const,
+      description:
+        "Optional role to pre-filter assignments (e.g. 'Developer', 'Architect').",
+    },
+    billable: {
+      type: "boolean" as const,
+      description:
+        "Optional — set true to show only billable assignments, false for non-billable.",
+    },
+  },
   additionalProperties: false,
 };
+
+const dashboardParser = z.object({
+  consultantName: z.string().optional(),
+  projectName: z.string().optional(),
+  skill: z.string().optional(),
+  role: z.string().optional(),
+  billable: z.boolean().optional(),
+});
 
 const profileInputSchema = {
   type: "object" as const,
@@ -231,24 +285,26 @@ const updateConsultantInputSchema = {
 const bulkUpdateInputSchema = {
   type: "object" as const,
   properties: {
-    updates: {
+    consultantIds: {
       type: "array" as const,
-      items: {
-        type: "object" as const,
-        properties: {
-          consultantId: { type: "string" as const },
-          name: { type: "string" as const },
-          email: { type: "string" as const },
-          phone: { type: "string" as const },
-          skills: { type: "array" as const, items: { type: "string" as const } },
-          roles: { type: "array" as const, items: { type: "string" as const } },
-        },
-        required: ["consultantId"],
-      },
-      description: "Array of consultant updates.",
+      items: { type: "string" as const },
+      description: "Array of consultant IDs to update.",
+    },
+    name: { type: "string" as const, description: "New name for all." },
+    email: { type: "string" as const, description: "New email for all." },
+    phone: { type: "string" as const, description: "New phone for all." },
+    skills: {
+      type: "array" as const,
+      items: { type: "string" as const },
+      description: "New skills list for all.",
+    },
+    roles: {
+      type: "array" as const,
+      items: { type: "string" as const },
+      description: "New roles list for all.",
     },
   },
-  required: ["updates"],
+  required: ["consultantIds"],
   additionalProperties: false,
 };
 
@@ -287,19 +343,6 @@ const assignConsultantInputSchema = {
       type: "number" as const,
       description: "Hourly rate for the consultant on this project. Defaults to 0.",
     },
-    forecast: {
-      type: "array" as const,
-      items: {
-        type: "object" as const,
-        properties: {
-          month: { type: "number" as const, description: "Month (1-12)." },
-          year: { type: "number" as const, description: "Year." },
-          hours: { type: "number" as const, description: "Forecasted hours." },
-        },
-        required: ["month", "year", "hours"],
-      },
-      description: "Optional forecasted hours per month.",
-    },
   },
   required: ["projectId", "consultantId", "role"],
   additionalProperties: false,
@@ -312,34 +355,25 @@ const bulkAssignInputSchema = {
       type: "string" as const,
       description: "The project ID to assign consultants to.",
     },
-    assignments: {
+    consultantIds: {
       type: "array" as const,
-      items: {
-        type: "object" as const,
-        properties: {
-          consultantId: { type: "string" as const, description: "The consultant ID." },
-          role: { type: "string" as const, description: "The role on the project." },
-          billable: { type: "boolean" as const, description: "Whether billable. Defaults to true." },
-          rate: { type: "number" as const, description: "Hourly rate. Defaults to 0." },
-          forecast: {
-            type: "array" as const,
-            items: {
-              type: "object" as const,
-              properties: {
-                month: { type: "number" as const },
-                year: { type: "number" as const },
-                hours: { type: "number" as const },
-              },
-              required: ["month", "year", "hours"],
-            },
-          },
-        },
-        required: ["consultantId", "role"],
-      },
-      description: "Array of consultant assignments to create.",
+      items: { type: "string" as const },
+      description: "Array of consultant IDs to assign.",
+    },
+    role: {
+      type: "string" as const,
+      description: "The role for all assigned consultants.",
+    },
+    billable: {
+      type: "boolean" as const,
+      description: "Whether the assignments are billable. Defaults to true.",
+    },
+    rate: {
+      type: "number" as const,
+      description: "Hourly rate for all assigned consultants. Defaults to 0.",
     },
   },
-  required: ["projectId", "assignments"],
+  required: ["projectId", "consultantIds", "role"],
   additionalProperties: false,
 };
 
@@ -372,16 +406,12 @@ const updateParser = z.object({
   roles: z.array(z.string()).optional(),
 });
 const bulkUpdateParser = z.object({
-  updates: z.array(
-    z.object({
-      consultantId: z.string(),
-      name: z.string().optional(),
-      email: z.string().optional(),
-      phone: z.string().optional(),
-      skills: z.array(z.string()).optional(),
-      roles: z.array(z.string()).optional(),
-    })
-  ),
+  consultantIds: z.array(z.string()),
+  name: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  skills: z.array(z.string()).optional(),
+  roles: z.array(z.string()).optional(),
 });
 const projectDetailParser = z.object({ projectId: z.string() });
 
@@ -391,20 +421,14 @@ const assignConsultantParser = z.object({
   role: z.string(),
   billable: z.boolean().optional(),
   rate: z.number().optional(),
-  forecast: z.array(z.object({ month: z.number(), year: z.number(), hours: z.number() })).optional(),
 });
 
 const bulkAssignParser = z.object({
   projectId: z.string(),
-  assignments: z.array(
-    z.object({
-      consultantId: z.string(),
-      role: z.string(),
-      billable: z.boolean().optional(),
-      rate: z.number().optional(),
-      forecast: z.array(z.object({ month: z.number(), year: z.number(), hours: z.number() })).optional(),
-    })
-  ),
+  consultantIds: z.array(z.string()),
+  role: z.string(),
+  billable: z.boolean().optional(),
+  rate: z.number().optional(),
 });
 
 const removeAssignmentParser = z.object({
@@ -482,7 +506,7 @@ export function createHRServer(): Server {
       name: "show-hr-dashboard",
       title: "Show HR Dashboard",
       description:
-        "Display the HR consultant dashboard with KPIs: consultant count, project count, total billable hours, and utilization data.",
+        "Display the HR consultant dashboard with KPIs. Accepts optional filters: consultantName, projectName, skill, role, billable — the dashboard auto-applies them so users see a focused view.",
       inputSchema: dashboardInputSchema,
       _meta: descriptorMeta(DASHBOARD_WIDGET),
       annotations: {
@@ -620,6 +644,7 @@ export function createHRServer(): Server {
       switch (name) {
         // ──── Dashboard ────
         case "show-hr-dashboard": {
+          const filters = dashboardParser.parse(args);
           const [consultants, projects, assignments] = await Promise.all([
             db.getAllConsultants(),
             db.getAllProjects(),
@@ -631,6 +656,37 @@ export function createHRServer(): Server {
             const forecast: Array<{ hours: number }> = JSON.parse(a.forecast || "[]");
             return sum + forecast.reduce((s, f) => s + f.hours, 0);
           }, 0);
+
+          // Build active filter hints to pass to the widget
+          const activeFilters: Record<string, unknown> = {};
+          const filterDescParts: string[] = [];
+
+          if (filters.consultantName) {
+            activeFilters.consultantName = filters.consultantName;
+            filterDescParts.push(`consultant: "${filters.consultantName}"`);
+          }
+          if (filters.projectName) {
+            // Resolve matching project IDs
+            const q = filters.projectName.toLowerCase();
+            const matchedIds = projects
+              .filter((p) => p.name.toLowerCase().includes(q))
+              .map((p) => p.rowKey);
+            activeFilters.projectIds = matchedIds;
+            activeFilters.projectName = filters.projectName;
+            filterDescParts.push(`project: "${filters.projectName}"`);
+          }
+          if (filters.skill) {
+            activeFilters.skill = filters.skill;
+            filterDescParts.push(`skill: "${filters.skill}"`);
+          }
+          if (filters.role) {
+            activeFilters.role = filters.role;
+            filterDescParts.push(`role: "${filters.role}"`);
+          }
+          if (filters.billable !== undefined) {
+            activeFilters.billable = filters.billable;
+            filterDescParts.push(filters.billable ? "billable only" : "non-billable only");
+          }
 
           const dashboardData = {
             consultants: consultants.map(parseConsultant),
@@ -652,13 +708,18 @@ export function createHRServer(): Server {
               totalAssignments: assignments.length,
               totalBillableHours,
             },
+            ...(Object.keys(activeFilters).length > 0 ? { filters: activeFilters } : {}),
           };
+
+          const filterDesc = filterDescParts.length > 0
+            ? ` (filtered by ${filterDescParts.join(", ")})`
+            : "";
 
           return {
             content: [
               {
                 type: "text" as const,
-                text: `HR Dashboard: ${consultants.length} consultants, ${projects.length} projects, ${totalBillableHours} billable hours forecasted.`,
+                text: `HR Dashboard: ${consultants.length} consultants, ${projects.length} projects, ${totalBillableHours} billable hours forecasted.${filterDesc}`,
               },
             ],
             structuredContent: dashboardData,
@@ -785,10 +846,9 @@ export function createHRServer(): Server {
 
         // ──── Bulk Update ────
         case "bulk-update-consultants": {
-          const { updates } = bulkUpdateParser.parse(args);
+          const { consultantIds, ...changes } = bulkUpdateParser.parse(args);
           const results: string[] = [];
-          for (const upd of updates) {
-            const { consultantId, ...changes } = upd;
+          for (const consultantId of consultantIds) {
             const updated = await db.updateConsultant(consultantId, changes);
             results.push(
               updated
@@ -874,7 +934,6 @@ export function createHRServer(): Server {
             role: parsed.role,
             billable: parsed.billable,
             rate: parsed.rate,
-            forecast: parsed.forecast,
           });
           return {
             content: [
@@ -888,7 +947,7 @@ export function createHRServer(): Server {
 
         // ──── Bulk Assign Consultants ────
         case "bulk-assign-consultants": {
-          const { projectId, assignments } = bulkAssignParser.parse(args);
+          const { projectId, consultantIds, role, billable, rate } = bulkAssignParser.parse(args);
           const project = await db.getProjectById(projectId);
           if (!project) {
             return {
@@ -897,21 +956,20 @@ export function createHRServer(): Server {
             };
           }
           const results: string[] = [];
-          for (const asn of assignments) {
-            const consultant = await db.getConsultantById(asn.consultantId);
+          for (const consultantId of consultantIds) {
+            const consultant = await db.getConsultantById(consultantId);
             if (!consultant) {
-              results.push(`✗ Consultant ${asn.consultantId} not found`);
+              results.push(`✗ Consultant ${consultantId} not found`);
               continue;
             }
             await db.createAssignment({
               projectId,
-              consultantId: asn.consultantId,
-              role: asn.role,
-              billable: asn.billable,
-              rate: asn.rate,
-              forecast: asn.forecast,
+              consultantId,
+              role,
+              billable,
+              rate,
             });
-            results.push(`✓ Assigned ${consultant.name} as ${asn.role}`);
+            results.push(`✓ Assigned ${consultant.name} as ${role}`);
           }
           return {
             content: [

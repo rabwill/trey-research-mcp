@@ -63,11 +63,21 @@ export interface DashboardSummary {
   searchCriteria?: { skill?: string; name?: string };
 }
 
+export interface DashboardFilters {
+  consultantName?: string;
+  projectName?: string;
+  projectIds?: string[];
+  skill?: string;
+  role?: string;
+  billable?: boolean;
+}
+
 export interface DashboardData {
   consultants: Consultant[];
   projects: Project[];
   assignments?: Assignment[];
   summary: DashboardSummary;
+  filters?: DashboardFilters;
 }
 
 export interface ConsultantProfileData {

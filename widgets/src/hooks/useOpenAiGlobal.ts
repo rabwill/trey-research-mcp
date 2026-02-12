@@ -17,7 +17,7 @@ declare global {
       userAgent?: unknown;
       setWidgetState?: (state: unknown) => void;
       callTool?: (name: string, args?: unknown) => Promise<unknown>;
-      requestDisplayMode?: (mode: string) => Promise<string>;
+      requestDisplayMode?: (options: { mode: string }) => Promise<string>;
       openExternal?: (url: string) => void;
       sendFollowUpMessage?: (message: string) => void;
       requestModal?: () => void;
