@@ -1,12 +1,12 @@
 # SKILL: Cookie-Cutter Guide — MCP Server with Rich Widgets
 
-Use this guide to build a new MCP server (any domain) with interactive Fluent UI React widgets that render inline in ChatGPT and Microsoft 365 Copilot. Follow each step in order — every pattern is taken directly from this project.
+Use this guide to build a new MCP server (any domain) with interactive Fluent UI React widgets that render inline in ChatGPT. Follow each step in order — every pattern is taken directly from this project.
 
 ---
 
 ## 1. Project Structure
 
-Create this folder layout. Copilot prompt: *"Scaffold an MCP widget project with this structure."*
+Create this folder layout. ChatGPT prompt: *"Scaffold an MCP widget project with this structure."*
 
 ```
 my-mcp-project/
@@ -199,7 +199,7 @@ seed().catch(console.error);
 
 ### Widget Protocol — How It Works
 
-ChatGPT/Copilot renders widgets through these four pieces:
+ChatGPT renders widgets through these four pieces:
 
 1. **Resources** — Widget HTML registered with `mimeType: "text/html+skybridge"`
 2. **`_meta` on tool definitions** — `openai/outputTemplate` points to the widget resource URI
@@ -283,7 +283,7 @@ Stateless Streamable HTTP — each request gets a fresh server + transport.
 |---|---|---|
 | `sessionIdGenerator` | `undefined` | Stateless — ChatGPT doesn't persist sessions |
 | `enableJsonResponse` | `true` | Returns JSON instead of SSE — avoids 30s timeout |
-| CORS `origin` | Allow `*` or specific origins | ChatGPT/Copilot sandbox sends `null` origin |
+| CORS `origin` | Allow `*` or specific origins | ChatGPT sandbox sends `null` origin |
 | Handle GET + DELETE `/mcp` | Delegate to transport | ChatGPT sends probe requests; 405 breaks the connector |
 
 ---
@@ -299,7 +299,7 @@ Stateless Streamable HTTP — each request gets a fresh server + transport.
 | `@fluentui/react-icons` | Icons |
 | `vite` + `vite-plugin-singlefile` | Single-file HTML build |
 
-### `index.html` — CSS Reset for Copilot
+### `index.html` — CSS Reset for ChatGPT
 
 Every widget needs this to prevent double scrollbars:
 
@@ -419,9 +419,9 @@ for (const widget of widgetDirs) {
 
 ---
 
-## 10. Copilot Prompts to Build a New Project
+## 10. ChatGPT Prompts to Build a New Project
 
-Use these prompts in sequence with GitHub Copilot to scaffold a new MCP widget project:
+Use these prompts in sequence with ChatGPT to scaffold a new MCP widget project:
 
 ### Prompt 1: Seed Data
 
@@ -456,7 +456,7 @@ Use these prompts in sequence with GitHub Copilot to scaffold a new MCP widget p
 - [ ] `seed.ts` reads `db/*.json` and upserts into tables
 - [ ] Server uses `enableJsonResponse: true` and `sessionIdGenerator: undefined`
 - [ ] GET and DELETE on `/mcp` are handled (not 405)
-- [ ] CORS allows ChatGPT/Copilot origins
+- [ ] CORS allows ChatGPT origins
 - [ ] Resources registered with `mimeType: "text/html+skybridge"`
 - [ ] Widget tool definitions include `_meta` with `openai/outputTemplate`
 - [ ] Widget tool responses include `structuredContent` + `_meta`

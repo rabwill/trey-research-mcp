@@ -1,6 +1,6 @@
 # HR Consultant MCP Server
 
-MCP server with rich Fluent UI React widgets for managing HR consultants, projects, and assignments. Renders interactive UI inline in ChatGPT and Microsoft 365 Copilot via the OpenAI widget protocol.
+MCP server with rich Fluent UI React widgets for managing HR consultants, projects, and assignments. Renders interactive UI inline in ChatGPT via the OpenAI widget protocol.
 
 ## Prerequisites
 
@@ -28,10 +28,6 @@ npm run start:server       # Start MCP server on http://localhost:8000
 **Settings → MCP → Add connector**
 - URL: `http://localhost:8000/mcp`
 - Transport: Streamable HTTP
-
-### Microsoft 365 Copilot
-
-Add the MCP endpoint URL via your Copilot agent configuration.
 
 ## MCP Tools
 
