@@ -87,7 +87,6 @@ interface HRWidget {
 let DASHBOARD_WIDGET: HRWidget;
 let PROFILE_WIDGET: HRWidget;
 let BULK_EDITOR_WIDGET: HRWidget;
-let EXTENDED_DASHBOARD_WIDGET: HRWidget;
 
 function loadWidgets() {
   DASHBOARD_WIDGET = {
@@ -114,18 +113,10 @@ function loadWidgets() {
     invoked: "Editor ready",
     html: readWidgetHtml("bulk-editor"),
   };
-  EXTENDED_DASHBOARD_WIDGET = {
-    id: "extended-dashboard",
-    title: "Extended Dashboard",
-    templateUri: "ui://widget/extended-dashboard.html",
-    invoking: "Loading extended analytics dashboard…",
-    invoked: "Extended dashboard ready",
-    html: readWidgetHtml("extended-dashboard"),
-  };
 }
 
 function getWidgets(): HRWidget[] {
-  return [DASHBOARD_WIDGET, PROFILE_WIDGET, BULK_EDITOR_WIDGET, EXTENDED_DASHBOARD_WIDGET];
+  return [DASHBOARD_WIDGET, PROFILE_WIDGET, BULK_EDITOR_WIDGET];
 }
 
 // ─── Metadata helpers ──────────────────────────────────────────────
@@ -517,19 +508,6 @@ export function createHRServer(): Server {
       },
     },
     {
-      name: "show-extended-dashboard",
-      title: "Show Extended Dashboard",
-      description:
-        "Display the extended analytics dashboard with charts, graphs, skill distribution, monthly forecasts, role breakdown, revenue analytics, and tabbed views for consultants, projects, and assignments.",
-      inputSchema: dashboardInputSchema,
-      _meta: descriptorMeta(EXTENDED_DASHBOARD_WIDGET),
-      annotations: {
-        destructiveHint: false,
-        openWorldHint: false,
-        readOnlyHint: true,
-      },
-    },
-    {
       name: "show-bulk-editor",
       title: "Show Bulk Editor",
       description:
@@ -675,54 +653,6 @@ export function createHRServer(): Server {
             ],
             structuredContent: dashboardData,
             _meta: invocationMeta(DASHBOARD_WIDGET),
-          };
-        }
-
-        // ──── Extended Dashboard ────
-        case "show-extended-dashboard": {
-          const [consultants, projects, assignments] = await Promise.all([
-            db.getAllConsultants(),
-            db.getAllProjects(),
-            db.getAllAssignments(),
-          ]);
-
-          const totalBillableHours = assignments.reduce((sum, a) => {
-            if (!a.billable) return sum;
-            const forecast: Array<{ hours: number }> = JSON.parse(a.forecast || "[]");
-            return sum + forecast.reduce((s, f) => s + f.hours, 0);
-          }, 0);
-
-          const dashboardData = {
-            consultants: consultants.map(parseConsultant),
-            projects: projects.map(parseProject),
-            assignments: assignments.map((a) => {
-              const parsed = parseAssignment(a);
-              const proj = projects.find((p) => p.rowKey === a.projectId);
-              const cons = consultants.find((c) => c.rowKey === a.consultantId);
-              return {
-                ...parsed,
-                projectName: proj?.name ?? "Unknown",
-                clientName: proj?.clientName ?? "Unknown",
-                consultantName: cons?.name ?? "Unknown",
-              };
-            }),
-            summary: {
-              totalConsultants: consultants.length,
-              totalProjects: projects.length,
-              totalAssignments: assignments.length,
-              totalBillableHours,
-            },
-          };
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Extended HR Analytics: ${consultants.length} consultants, ${projects.length} projects, ${assignments.length} assignments, ${totalBillableHours} billable hours forecasted.`,
-              },
-            ],
-            structuredContent: dashboardData,
-            _meta: invocationMeta(EXTENDED_DASHBOARD_WIDGET),
           };
         }
 

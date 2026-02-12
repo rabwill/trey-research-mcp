@@ -33,7 +33,6 @@ const widgets = [
   { name: "hr-dashboard", entry: "src/dashboard/index.html" },
   { name: "bulk-editor", entry: "src/bulk-editor/index.html" },
   { name: "consultant-profile", entry: "src/consultant-profile/index.html" },
-  { name: "extended-dashboard", entry: "src/extended-dashboard/index.html" },
 ];
 
 // Ensure assets dir
