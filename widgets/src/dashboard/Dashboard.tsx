@@ -763,6 +763,15 @@ export function Dashboard() {
                   fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
                 }}
               />
+              {searchFilter && (
+                <button
+                  onClick={() => setSearchFilter("")}
+                  style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: t.textTertiary, padding: 4, display: "flex", alignItems: "center" }}
+                  title="Clear filter"
+                >
+                  <Dismiss16Regular />
+                </button>
+              )}
             </div>
             <div style={{ display: "flex", gap: 4 }}>
               {(["name", "hours", "rate"] as const).map((key) => (
@@ -892,6 +901,15 @@ export function Dashboard() {
                   fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
                 }}
               />
+              {searchFilter && (
+                <button
+                  onClick={() => setSearchFilter("")}
+                  style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: t.textTertiary, padding: 4, display: "flex", alignItems: "center" }}
+                  title="Clear filter"
+                >
+                  <Dismiss16Regular />
+                </button>
+              )}
             </div>
             <div style={{ display: "flex", gap: 4 }}>
               {(["name", "project"] as const).map((key) => (
@@ -1190,6 +1208,15 @@ export function Dashboard() {
                   fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
                 }}
               />
+              {searchFilter && (
+                <button
+                  onClick={() => setSearchFilter("")}
+                  style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: t.textTertiary, padding: 4, display: "flex", alignItems: "center" }}
+                  title="Clear filter"
+                >
+                  <Dismiss16Regular />
+                </button>
+              )}
             </div>
             <div style={{ display: "flex", gap: 4 }}>
               {(["name", "hours", "rate", "project"] as const).map((key) => (
